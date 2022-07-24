@@ -32,6 +32,7 @@ You should also take a look at the notes and "gotchas" for your specific cloud p
 * [BizflyCloud](./cloudprovider/bizflycloud/README.md)
 * [Vultr](./cloudprovider/vultr/README.md)
 * [TencentCloud](./cloudprovider/tencentcloud/README.md)
+* [Kamatera](./cloudprovider/kamatera/README.md)
 
 # Releases
 
@@ -179,3 +180,4 @@ Supported cloud providers:
 * TencentCloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/tencentcloud/README.md
 * BaiduCloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/baiducloud/README.md
 * Huawei Cloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/huaweicloud/README.md
+* Kamatera https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/kamatera/README.md
