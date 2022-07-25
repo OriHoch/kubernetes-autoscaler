@@ -113,7 +113,7 @@ func (k *kamateraCloudProvider) Refresh() error {
 	return k.manager.refresh()
 }
 
-// BuildKamatera builds the BuildLinode cloud provider.
+// BuildKamatera builds the Kamatera cloud provider.
 func BuildKamatera(
 	opts config.AutoscalingOptions,
 	do cloudprovider.NodeGroupDiscoveryOptions,
@@ -137,7 +137,7 @@ func BuildKamatera(
 func newKamateraCloudProvider(config io.Reader, rl *cloudprovider.ResourceLimiter) (cloudprovider.CloudProvider, error) {
 	m, err := newManager(config)
 	if err != nil {
-		return nil, fmt.Errorf("could not create linode manager: %v", err)
+		return nil, fmt.Errorf("could not create kamatera manager: %v", err)
 	}
 
 	err = m.refresh()

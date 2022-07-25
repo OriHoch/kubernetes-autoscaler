@@ -17,6 +17,7 @@ limitations under the License.
 package kamatera
 
 import (
+	"context"
 	"fmt"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -176,18 +177,44 @@ func (n *NodeGroup) GetOptions(defaults config.NodeGroupAutoscalingOptions) (*co
 }
 
 func (n *NodeGroup) findInstanceForNode(node *apiv1.Node) (*Instance, error) {
-	// TODO: use node.Spec.ProviderID to find the corresponding Kamatera server instance
-	return nil, cloudprovider.ErrNotImplemented
+	if len(node.Spec.ProviderID) < 10 {
+		return nil, fmt.Errorf("Invalid node ProviderID: %s", node.Spec.ProviderID)
+	}
+	for _, instance := range n.instances {
+		if instance.Id == node.Spec.ProviderID {
+			return instance, nil
+		}
+	}
+	return nil, nil
 }
 
-func (n *NodeGroup) deleteInstance(server *Instance) error {
-	// TODO: call the instance delete method, wait for it to be deleted, remove it from n.instances
-	return cloudprovider.ErrNotImplemented
+func (n *NodeGroup) deleteInstance(instance *Instance) error {
+	err := instance.delete(n.manager.client)
+	if err != nil {
+		return err
+	}
+	instances := make(map[string]*Instance)
+	for _, i := range n.instances {
+		if i.Id != instance.Id {
+			instances[i.Id] = i
+		}
+	}
+	n.instances = instances
+	return nil
 }
 
 func (n *NodeGroup) createInstances(count int) error {
-	// TODO: Create instances, wait for them to be created, add them to n.instances
-	return cloudprovider.ErrNotImplemented
+	servers, err := n.manager.client.CreateServers(context.Background(), count)
+	if err != nil {
+		return err
+	}
+	for _, server := range servers {
+		n.instances[server.Id] = &Instance{
+			Id:     server.Id,
+			Status: &cloudprovider.InstanceStatus{State: cloudprovider.InstanceRunning},
+		}
+	}
+	return nil
 }
 
 func (n *NodeGroup) extendedDebug() string {

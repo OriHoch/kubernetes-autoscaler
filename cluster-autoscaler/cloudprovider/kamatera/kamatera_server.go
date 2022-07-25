@@ -16,20 +16,8 @@ limitations under the License.
 
 package kamatera
 
-import (
-	"context"
-	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
-)
-
-// Instance implements cloudprovider.Instance interface. Instance contains
-// configuration info and functions to control a single Kamatera server instance.
-type Instance struct {
-	// Id is the Kamatera server Id.
+// Server contains information about a Kamatera server, as fetched from the API
+type Server struct {
 	Id string
-	// Status represents status of the node. (Optional)
-	Status *cloudprovider.InstanceStatus
-}
-
-func (i *Instance) delete(client kamateraAPIClient) error {
-	return client.DeleteServer(context.Background(), i.Id)
+	Tags []string
 }

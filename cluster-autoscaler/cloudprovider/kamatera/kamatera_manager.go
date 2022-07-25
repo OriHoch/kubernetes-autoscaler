@@ -17,6 +17,7 @@ limitations under the License.
 package kamatera
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -24,9 +25,15 @@ import (
 	klog "k8s.io/klog/v2"
 )
 
+const (
+	clusterServerTagPrefix string = "k8sca-"
+	nodeGroupTagPrefix string = "k8scang-"
+)
+
 // manager handles Kamatera communication and holds information about
 // the node groups
 type manager struct {
+	client     kamateraAPIClient
 	config     *kamateraConfig
 	nodeGroups map[string]*NodeGroup // key: NodeGroup.id
 }
@@ -36,7 +43,9 @@ func newManager(config io.Reader) (*manager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config: %v", err)
 	}
+	client := buildKamateraAPIClient(cfg.apiClientId, cfg.apiSecret)
 	m := &manager{
+		client:     client,
 		config:     cfg,
 		nodeGroups: make(map[string]*NodeGroup),
 	}
@@ -44,9 +53,14 @@ func newManager(config io.Reader) (*manager, error) {
 }
 
 func (m *manager) refresh() error {
+	servers, error := m.client.ListServersByTag(context.Background(),
+		fmt.Sprintf("%s%s", clusterServerTagPrefix, m.config.clusterName))
+	if error != nil {
+		return fmt.Errorf("failed to get list of Kamatera servers from Kamatera API: %v", error)
+	}
 	nodeGroups := make(map[string]*NodeGroup)
 	for nodeGroupName, nodeGroupCfg := range m.config.nodeGroupCfg {
-		nodeGroup, err := m.buildNodeGroup(nodeGroupName, nodeGroupCfg)
+		nodeGroup, err := m.buildNodeGroup(nodeGroupName, nodeGroupCfg, servers)
 		if err != nil {
 			return fmt.Errorf("failed to build node group %s: %v", nodeGroupName, err)
 		}
@@ -63,8 +77,8 @@ func (m *manager) refresh() error {
 	return nil
 }
 
-func (m *manager) buildNodeGroup(name string, cfg *nodeGroupConfig) (*NodeGroup, error) {
-	instances, err := m.getNodeGroupInstances(name)
+func (m *manager) buildNodeGroup(name string, cfg *nodeGroupConfig, servers []Server) (*NodeGroup, error) {
+	instances, err := m.getNodeGroupInstances(name, servers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances for node group %s: %v", name, err)
 	}
@@ -78,6 +92,23 @@ func (m *manager) buildNodeGroup(name string, cfg *nodeGroupConfig) (*NodeGroup,
 	return ng, nil
 }
 
-func (m *manager) getNodeGroupInstances(name string) (map[string]*Instance, error) {
-	return nil, cloudprovider.ErrNotImplemented
+func (m *manager) getNodeGroupInstances(name string, servers []Server) (map[string]*Instance, error) {
+	nodeGroupTag := fmt.Sprintf("%s%s", nodeGroupTagPrefix, name)
+	instances := make(map[string]*Instance)
+	for _, server := range servers {
+		hasNodeGroupTag := false
+		for _, tag := range server.Tags {
+			if tag == nodeGroupTag {
+				hasNodeGroupTag = true
+				break
+			}
+		}
+		if hasNodeGroupTag {
+			instances[server.Id] = &Instance{
+				Id:     server.Id,
+				Status: &cloudprovider.InstanceStatus{State: cloudprovider.InstanceRunning},
+			}
+		}
+	}
+	return instances, nil
 }

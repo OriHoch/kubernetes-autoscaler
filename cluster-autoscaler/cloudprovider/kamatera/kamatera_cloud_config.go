@@ -52,8 +52,8 @@ type GcfgGlobalConfig struct {
 	KamateraApiClientId string `gcfg:"kamatera-api-client-id"`
 	KamateraApiSecret   string `gcfg:"kamatera-api-secret"`
 	ClusterName 	    string `gcfg:"cluster-name"`
-	DefaultMinSize      string   `gcfg:"defaut-min-size"`
-	DefaultMaxSize      string   `gcfg:"defaut-max-size"`
+	DefaultMinSize      string   `gcfg:"default-min-size"`
+	DefaultMaxSize      string   `gcfg:"default-max-size"`
 	// TODO: add default server configs
 }
 
@@ -93,6 +93,11 @@ func buildCloudConfig(config io.Reader) (*kamateraConfig, error) {
 		return nil, fmt.Errorf("kamatera api secret is not set")
 	}
 
+	// Cluster name must be max 15 characters due to limitation of Kamatera server tags
+	if len(clusterName) > 15 {
+		return nil, fmt.Errorf("cluster name must be at most 15 characters long")
+	}
+
 	// get the default min and max size as defined in the global section of the config file
 	defaultMinSize, defaultMaxSize, err := getSizeLimits(
 		gcfgCloudConfig.Global.DefaultMinSize,
@@ -106,6 +111,10 @@ func buildCloudConfig(config io.Reader) (*kamateraConfig, error) {
 	// get the specific configuration of a node group
 	nodeGroupCfg := make(map[string]*nodeGroupConfig)
 	for nodeGroupName, gcfgNodeGroup := range gcfgCloudConfig.NodeGroups {
+		// node group name must be max 15 characters due to limitation of Kamatera server tags
+		if len(nodeGroupName) > 15 {
+			return nil, fmt.Errorf("node group name must be at most 15 characters long")
+		}
 		minSize, maxSize, err := getSizeLimits(gcfgNodeGroup.MinSize, gcfgNodeGroup.MaxSize, defaultMinSize, defaultMaxSize)
 		if err != nil {
 			return nil, fmt.Errorf("cannot get size values for node group %s: %v", nodeGroupName, err)

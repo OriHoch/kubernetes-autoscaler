@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,18 +18,17 @@ package kamatera
 
 import (
 	"context"
-	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 )
 
-// Instance implements cloudprovider.Instance interface. Instance contains
-// configuration info and functions to control a single Kamatera server instance.
-type Instance struct {
-	// Id is the Kamatera server Id.
-	Id string
-	// Status represents status of the node. (Optional)
-	Status *cloudprovider.InstanceStatus
+// kamateraAPIClient is the interface used to call kamatera API
+type kamateraAPIClient interface {
+	ListServersByTag(ctx context.Context, tag string) ([]Server, error)
+	DeleteServer(ctx context.Context, id string) error
+	CreateServers(ctx context.Context, count int) ([]Server, error)
 }
 
-func (i *Instance) delete(client kamateraAPIClient) error {
-	return client.DeleteServer(context.Background(), i.Id)
+// buildKamateraAPIClient returns the struct ready to perform calls to kamatera API
+func buildKamateraAPIClient(clientId string, secret string) kamateraAPIClient {
+	client := NewKamateraApiClientRest(clientId, secret)
+	return &client
 }
