@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,190 +17,67 @@ limitations under the License.
 package kamatera
 
 import (
-	"context"
-	"encoding/base64"
-	"errors"
 	"fmt"
-	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/hetzner/hcloud-go/hcloud"
-	"os"
-	"strconv"
-	"strings"
-	"time"
+	"io"
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 
-	apiv1 "k8s.io/api/core/v1"
+	klog "k8s.io/klog/v2"
 )
 
-// kamateraManager handles Kamatera communication and data caching of
-// node groups
-type kamateraManager struct {
-	nodeGroups     map[string]*kamateraNodeGroup
-	cloudInit      string
+// manager handles Kamatera communication and holds information about
+// the node groups
+type manager struct {
+	config     *kamateraConfig
+	nodeGroups map[string]*NodeGroup // key: NodeGroup.id
 }
 
-func newManager() (*kamateraManager, error) {
-	api_client_id := os.Getenv("KAMATERA_API_CLIENT_ID")
-	if api_client_id == "" {
-		return nil, errors.New("`KAMATERA_API_CLIENT_ID` is not specified")
-	}
-	api_secret := os.Getenv("KAMATERA_API_SECRET")
-	if api_secret == "" {
-		return nil, errors.New("`KAMATERA_API_SECRET` is not specified")
-	}
-	cloudInitBase64 := os.Getenv("KAMATERA_CLOUD_INIT")
-	if cloudInitBase64 == "" {
-		return nil, errors.New("`KAMATERA_CLOUD_INIT` is not specified")
-	}
-	client := hcloud.NewClient(hcloud.WithToken(token))
-	ctx := context.Background()
-	cloudInit, err := base64.StdEncoding.DecodeString(cloudInitBase64)
+func newManager(config io.Reader) (*manager, error) {
+	cfg, err := buildCloudConfig(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse cloud init error: %s", err)
+		return nil, fmt.Errorf("failed to parse config: %v", err)
 	}
-
-	imageName := os.Getenv("HCLOUD_IMAGE")
-	if imageName == "" {
-		imageName = "ubuntu-20.04"
+	m := &manager{
+		config:     cfg,
+		nodeGroups: make(map[string]*NodeGroup),
 	}
-
-	// Search for an image ID corresponding to the supplied HCLOUD_IMAGE env
-	// variable. This value can either be an image ID itself (an int), a name
-	// (e.g. "ubuntu-20.04"), or a label selector associated with an image
-	// snapshot. In the latter case it will use the most recent snapshot.
-	image, _, err := client.Image.Get(ctx, imageName)
-	if err != nil {
-		return nil, fmt.Errorf("unable to find image %s: %v", imageName, err)
-	}
-	if image == nil {
-		images, err := client.Image.AllWithOpts(ctx, hcloud.ImageListOpts{
-			Type:   []hcloud.ImageType{hcloud.ImageTypeSnapshot},
-			Status: []hcloud.ImageStatus{hcloud.ImageStatusAvailable},
-			Sort:   []string{"created:desc"},
-			ListOpts: hcloud.ListOpts{
-				LabelSelector: imageName,
-			},
-		})
-
-		if err != nil || len(images) == 0 {
-			return nil, fmt.Errorf("unable to find image %s: %v", imageName, err)
-		}
-
-		image = images[0]
-	}
-
-	var sshKey *hcloud.SSHKey
-	sshKeyName := os.Getenv("HCLOUD_SSH_KEY")
-	if sshKeyName != "" {
-		sshKey, _, err = client.SSHKey.Get(ctx, sshKeyName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get ssh key error: %s", err)
-		}
-	}
-
-	var network *hcloud.Network
-	networkName := os.Getenv("HCLOUD_NETWORK")
-	if networkName != "" {
-		network, _, err = client.Network.Get(ctx, networkName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get network error: %s", err)
-		}
-
-	}
-
-	createTimeout := serverCreateTimeoutDefault
-	v, err := strconv.Atoi(os.Getenv("HCLOUD_SERVER_CREATION_TIMEOUT"))
-	if err == nil && v != 0 {
-		createTimeout = time.Duration(v) * time.Minute
-	}
-
-	var firewall *hcloud.Firewall
-	firewallName := os.Getenv("HCLOUD_FIREWALL")
-	if firewallName != "" {
-		firewall, _, err = client.Firewall.Get(ctx, firewallName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get firewall error: %s", err)
-		}
-	}
-
-	m := &hetznerManager{
-		client:         client,
-		nodeGroups:     make(map[string]*hetznerNodeGroup),
-		cloudInit:      string(cloudInit),
-		image:          image,
-		sshKey:         sshKey,
-		network:        network,
-		firewall:       firewall,
-		createTimeout:  createTimeout,
-		apiCallContext: ctx,
-	}
-
-	m.nodeGroups[drainingNodePoolId] = &hetznerNodeGroup{
-		manager:      m,
-		instanceType: "cx11",
-		region:       "fsn1",
-		targetSize:   0,
-		maxSize:      0,
-		minSize:      0,
-		id:           drainingNodePoolId,
-	}
-
 	return m, nil
 }
 
-// Refresh refreshes the cache holding the nodegroups. This is called by the CA
-// based on the `--scan-interval`. By default it's 10 seconds.
-func (m *hetznerManager) Refresh() error {
+func (m *manager) refresh() error {
+	nodeGroups := make(map[string]*NodeGroup)
+	for nodeGroupName, nodeGroupCfg := range m.config.nodeGroupCfg {
+		nodeGroup, err := m.buildNodeGroup(nodeGroupName, nodeGroupCfg)
+		if err != nil {
+			return fmt.Errorf("failed to build node group %s: %v", nodeGroupName, err)
+		}
+		nodeGroups[nodeGroupName] = nodeGroup
+	}
+
+	// show some debug info
+	klog.V(2).Infof("Kamatera node groups after refresh:")
+	for _, ng := range nodeGroups {
+		klog.V(2).Infof("%s", ng.extendedDebug())
+	}
+
+	m.nodeGroups = nodeGroups
 	return nil
 }
 
-func (m *hetznerManager) allServers(nodeGroup string) ([]*hcloud.Server, error) {
-	listOptions := hcloud.ListOpts{
-		PerPage:       50,
-		LabelSelector: nodeGroupLabel + "=" + nodeGroup,
-	}
-
-	requestOptions := hcloud.ServerListOpts{ListOpts: listOptions}
-	servers, err := m.client.Server.AllWithOpts(m.apiCallContext, requestOptions)
+func (m *manager) buildNodeGroup(name string, cfg *nodeGroupConfig) (*NodeGroup, error) {
+	instances, err := m.getNodeGroupInstances(name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get servers for hcloud: %v", err)
+		return nil, fmt.Errorf("failed to get instances for node group %s: %v", name, err)
 	}
-
-	return servers, nil
+	ng := &NodeGroup{
+		id: name,
+		manager: m,
+		minSize: cfg.minSize,
+		maxSize: cfg.maxSize,
+		instances: instances,
+	}
+	return ng, nil
 }
 
-func (m *hetznerManager) deleteByNode(node *apiv1.Node) error {
-	server, err := m.serverForNode(node)
-	if err != nil {
-		return fmt.Errorf("failed to delete node %s error: %v", node.Name, err)
-	}
-
-	if server == nil {
-		return fmt.Errorf("failed to delete node %s server not found", node.Name)
-	}
-
-	return m.deleteServer(server)
-}
-
-func (m *hetznerManager) deleteServer(server *hcloud.Server) error {
-	_, err := m.client.Server.Delete(m.apiCallContext, server)
-	return err
-}
-
-func (m *hetznerManager) addNodeToDrainingPool(node *apiv1.Node) (*hetznerNodeGroup, error) {
-	m.nodeGroups[drainingNodePoolId].targetSize += 1
-	return m.nodeGroups[drainingNodePoolId], nil
-}
-
-func (m *hetznerManager) serverForNode(node *apiv1.Node) (*hcloud.Server, error) {
-	var nodeIdOrName string
-	if node.Spec.ProviderID != "" {
-		nodeIdOrName = strings.TrimPrefix(node.Spec.ProviderID, providerIDPrefix)
-	} else {
-		nodeIdOrName = node.Name
-	}
-
-	server, _, err := m.client.Server.Get(m.apiCallContext, nodeIdOrName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get servers for node %s error: %v", node.Name, err)
-	}
-	return server, nil
+func (m *manager) getNodeGroupInstances(name string) (map[string]*Instance, error) {
+	return nil, cloudprovider.ErrNotImplemented
 }

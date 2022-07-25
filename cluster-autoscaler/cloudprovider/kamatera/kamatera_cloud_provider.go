@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,19 +26,12 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
-	"k8s.io/klog/v2"
+	klog "k8s.io/klog/v2"
 )
 
-var _ cloudprovider.CloudProvider = (*kamateraCloudProvider)(nil)
-
-const (
-	nodeGroupLabel             = kamateraLabelNamespace + "/node-group"
-	kamateraLabelNamespace       = "kamatera"
-)
-
-// kamateraCloudProvider implements CloudProvider interface.
+// kamateraCloudProvider implements cloudprovider.CloudProvider interface.
 type kamateraCloudProvider struct {
-	manager         *kamateraManager
+	manager         *manager
 	resourceLimiter *cloudprovider.ResourceLimiter
 }
 
@@ -49,74 +42,52 @@ func (k *kamateraCloudProvider) Name() string {
 
 // NodeGroups returns all node groups configured for this cloud provider.
 func (k *kamateraCloudProvider) NodeGroups() []cloudprovider.NodeGroup {
-	groups := make([]cloudprovider.NodeGroup, 0, len(k.manager.nodeGroups))
-	for groupId := range k.manager.nodeGroups {
-		groups = append(groups, k.manager.nodeGroups[groupId])
+	nodeGroups := make([]cloudprovider.NodeGroup, len(k.manager.nodeGroups))
+	i := 0
+	for _, ng := range k.manager.nodeGroups {
+		nodeGroups[i] = ng
+		i++
 	}
-	return groups
+	return nodeGroups
 }
 
 // NodeGroupForNode returns the node group for the given node, nil if the node
 // should not be processed by cluster autoscaler, or non-nil error if such
 // occurred. Must be implemented.
 func (k *kamateraCloudProvider) NodeGroupForNode(node *apiv1.Node) (cloudprovider.NodeGroup, error) {
-	server, err := k.manager.serverForNode(node)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check if server %s exists error: %v", node.Spec.ProviderID, err)
-	}
-
-	var groupId string
-	if server == nil {
-		klog.V(3).Infof("failed to find Kamatera server for node %s", node.Name)
-		nodeGroupId, exists := node.Labels[nodeGroupLabel]
-		if !exists {
-			return nil, nil
+	for _, ng := range k.manager.nodeGroups {
+		instance, err := ng.findInstanceForNode(node)
+		if err != nil {
+			return nil, err
 		}
-		groupId = nodeGroupId
-	} else {
-		serverGroupId, exists := server.Labels[nodeGroupLabel]
-		groupId = serverGroupId
-		if !exists {
-			return nil, nil
+		if instance != nil {
+			return ng, nil
 		}
 	}
-
-	group, exists := k.manager.nodeGroups[groupId]
-	if !exists {
-		return nil, nil
-	}
-
-	return group, nil
+	return nil, nil
 }
 
-// Pricing returns pricing model for this cloud provider or error if not
-// available. Implementation optional.
+// Pricing returns pricing model for this cloud provider or error if not available.
+// Implementation optional.
 func (k *kamateraCloudProvider) Pricing() (cloudprovider.PricingModel, errors.AutoscalerError) {
 	return nil, cloudprovider.ErrNotImplemented
 }
 
-// GetAvailableMachineTypes get all machine types that can be requested from
-// the cloud provider. Implementation optional.
+// GetAvailableMachineTypes get all machine types that can be requested from the cloud provider.
+// Implementation optional.
 func (k *kamateraCloudProvider) GetAvailableMachineTypes() ([]string, error) {
-	return []string{}, nil
+	return []string{}, cloudprovider.ErrNotImplemented
 }
 
-// NewNodeGroup builds a theoretical node group based on the node definition
-// provided. The node group is not automatically created on the cloud provider
-// side. The node group is not returned by NodeGroups() until it is created.
+// NewNodeGroup builds a theoretical node group based on the node definition provided. The node group is not automatically
+// created on the cloud provider side. The node group is not returned by NodeGroups() until it is created.
 // Implementation optional.
-func (k *kamateraCloudProvider) NewNodeGroup(
-	machineType string,
-	labels map[string]string,
-	systemLabels map[string]string,
-	taints []apiv1.Taint,
-	extraResources map[string]resource.Quantity,
-) (cloudprovider.NodeGroup, error) {
+func (k *kamateraCloudProvider) NewNodeGroup(machineType string, labels map[string]string, systemLabels map[string]string,
+	taints []apiv1.Taint, extraResources map[string]resource.Quantity) (cloudprovider.NodeGroup, error) {
 	return nil, cloudprovider.ErrNotImplemented
 }
 
-// GetResourceLimiter returns struct containing limits (max, min) for
-// resources (cores, memory etc.).
+// GetResourceLimiter returns struct containing limits (max, min) for resources (cores, memory etc.).
 func (k *kamateraCloudProvider) GetResourceLimiter() (*cloudprovider.ResourceLimiter, error) {
 	return k.resourceLimiter, nil
 }
@@ -131,20 +102,18 @@ func (k *kamateraCloudProvider) GetAvailableGPUTypes() map[string]struct{} {
 	return nil
 }
 
-// Cleanup cleans up open resources before the cloud provider is destroyed,
-// i.e. go routines etc.
+// Cleanup cleans up open resources before the cloud provider is destroyed, i.e. go routines etc.
 func (k *kamateraCloudProvider) Cleanup() error {
 	return nil
 }
 
-// Refresh is called before every main loop and can be used to dynamically
-// update cloud provider state. In particular the list of node groups returned
-// by NodeGroups() can change as a result of CloudProvider.Refresh().
+// Refresh is called before every main loop and can be used to dynamically update cloud provider state.
+// In particular the list of node groups returned by NodeGroups can change as a result of CloudProvider.Refresh().
 func (k *kamateraCloudProvider) Refresh() error {
 	return k.manager.refresh()
 }
 
-// BuildKamatera builds the Kamatera cloud provider.
+// BuildKamatera builds the BuildLinode cloud provider.
 func BuildKamatera(
 	opts config.AutoscalingOptions,
 	do cloudprovider.NodeGroupDiscoveryOptions,
@@ -158,23 +127,33 @@ func BuildKamatera(
 		klog.Fatalf("Could not open cloud provider configuration file %q, error: %v", opts.CloudConfig, err)
 	}
 	defer configFile.Close()
-	kcp, err := newkamateraCloudProvider(configFile, rl)
+	kcp, err := newKamateraCloudProvider(configFile, rl)
 	if err != nil {
-		klog.Fatalf("Could not create Kamatera cloud provider: %v", err)
+		klog.Fatalf("Could not create kamatera cloud provider: %v", err)
 	}
 	return kcp
 }
 
-func newkamateraCloudProvider(config io.Reader, rl *cloudprovider.ResourceLimiter) (cloudprovider.CloudProvider, error) {
+func newKamateraCloudProvider(config io.Reader, rl *cloudprovider.ResourceLimiter) (cloudprovider.CloudProvider, error) {
 	m, err := newManager(config)
 	if err != nil {
-		return nil, fmt.Errorf("could not create Kamatera manager: %v", err)
+		return nil, fmt.Errorf("could not create linode manager: %v", err)
 	}
+
 	err = m.refresh()
 	if err != nil {
-		klog.V(1).Infof("Error on first refresh of Kamatera manager: %v", err)
+		klog.V(1).Infof("Error on first import of Kamatera node groups: %v", err)
 	}
-	klog.V(1).Infof("First refresh of Kamatera manager ended")
+	klog.V(1).Infof("First import of existing Kamatera node groups ended")
+	if len(m.nodeGroups) == 0 {
+		klog.V(1).Infof("Could not import any Kamatera node groups")
+	} else {
+		klog.V(1).Infof("imported Kamatera node groups:")
+		for _, ng := range m.nodeGroups {
+			klog.V(1).Infof("%s", ng.extendedDebug())
+		}
+	}
+
 	return &kamateraCloudProvider{
 		manager:         m,
 		resourceLimiter: rl,
