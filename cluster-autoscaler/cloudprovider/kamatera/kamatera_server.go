@@ -18,6 +18,6 @@ package kamatera
 
 // Server contains information about a Kamatera server, as fetched from the API
 type Server struct {
-	Id string
+	Name string
 	Tags []string
 }

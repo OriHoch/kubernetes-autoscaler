@@ -22,8 +22,9 @@ import (
 
 // kamateraAPIClient is the interface used to call kamatera API
 type kamateraAPIClient interface {
+	SetBaseURL(baseURL string)
 	ListServersByTag(ctx context.Context, tag string) ([]Server, error)
-	DeleteServer(ctx context.Context, id string) error
+	DeleteServer(ctx context.Context, name string) error
 	CreateServers(ctx context.Context, count int) ([]Server, error)
 }
 

@@ -24,7 +24,7 @@ import (
 // Instance implements cloudprovider.Instance interface. Instance contains
 // configuration info and functions to control a single Kamatera server instance.
 type Instance struct {
-	// Id is the Kamatera server Id.
+	// Id is the Kamatera server Name.
 	Id string
 	// Status represents status of the node. (Optional)
 	Status *cloudprovider.InstanceStatus

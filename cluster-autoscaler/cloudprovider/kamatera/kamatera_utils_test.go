@@ -18,19 +18,22 @@ package kamatera
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
-	"os/exec"
-
+	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/mock"
 )
 
-func mockKamateraServerId() string {
-	output, _ := exec.Command("uuidgen").Output()
-	return fmt.Sprintf("%s", output)
+func mockKamateraServerName() string {
+	return fmt.Sprintf("%s", hex.EncodeToString(uuid.NewV4().Bytes()))
 }
 
 type kamateraClientMock struct {
 	mock.Mock
+}
+
+func (c *kamateraClientMock) SetBaseURL(baseURL string) {
+	c.Called(baseURL)
 }
 
 func (c *kamateraClientMock) ListServersByTag(ctx context.Context, tag string) ([]Server, error) {

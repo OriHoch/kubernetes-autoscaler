@@ -66,18 +66,18 @@ max-size=5
 	m.client = &client
 	ctx := context.Background()
 
-	serverId1 := mockKamateraServerId()
-	serverId2 := mockKamateraServerId()
-	serverId3 := mockKamateraServerId()
-	serverId4 := mockKamateraServerId()
+	serverName1 := mockKamateraServerName()
+	serverName2 := mockKamateraServerName()
+	serverName3 := mockKamateraServerName()
+	serverName4 := mockKamateraServerName()
 	client.On(
 		"ListServersByTag", ctx, fmt.Sprintf("%s%s", clusterServerTagPrefix, "aaabbb"),
 	).Return(
 		[]Server{
-			{Id: serverId1, Tags: []string{fmt.Sprintf("%s%s", clusterServerTagPrefix, "aaabbb"), fmt.Sprintf("%s%s", nodeGroupTagPrefix, "ng1")}},
-			{Id: serverId2, Tags: []string{fmt.Sprintf("%s%s", nodeGroupTagPrefix, "ng1"), fmt.Sprintf("%s%s", clusterServerTagPrefix, "aaabbb")}},
-			{Id: serverId3, Tags: []string{fmt.Sprintf("%s%s", nodeGroupTagPrefix, "ng1"), fmt.Sprintf("%s%s", clusterServerTagPrefix, "aaabbb")}},
-			{Id: serverId4, Tags: []string{fmt.Sprintf("%s%s", nodeGroupTagPrefix, "ng2"), fmt.Sprintf("%s%s", clusterServerTagPrefix, "aaabbb")}},
+			{Name: serverName1, Tags: []string{fmt.Sprintf("%s%s", clusterServerTagPrefix, "aaabbb"), fmt.Sprintf("%s%s", nodeGroupTagPrefix, "ng1")}},
+			{Name: serverName2, Tags: []string{fmt.Sprintf("%s%s", nodeGroupTagPrefix, "ng1"), fmt.Sprintf("%s%s", clusterServerTagPrefix, "aaabbb")}},
+			{Name: serverName3, Tags: []string{fmt.Sprintf("%s%s", nodeGroupTagPrefix, "ng1"), fmt.Sprintf("%s%s", clusterServerTagPrefix, "aaabbb")}},
+			{Name: serverName4, Tags: []string{fmt.Sprintf("%s%s", nodeGroupTagPrefix, "ng2"), fmt.Sprintf("%s%s", clusterServerTagPrefix, "aaabbb")}},
 		},
 		nil,
 	).Once()

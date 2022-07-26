@@ -104,8 +104,8 @@ func (m *manager) getNodeGroupInstances(name string, servers []Server) (map[stri
 			}
 		}
 		if hasNodeGroupTag {
-			instances[server.Id] = &Instance{
-				Id:     server.Id,
+			instances[server.Name] = &Instance{
+				Id:     server.Name,
 				Status: &cloudprovider.InstanceStatus{State: cloudprovider.InstanceRunning},
 			}
 		}

@@ -125,7 +125,7 @@ func (n *NodeGroup) Debug() string {
 // Other fields are optional.
 // This list should include also instances that might have not become a kubernetes node yet.
 func (n *NodeGroup) Nodes() ([]cloudprovider.Instance, error) {
-	instances := make([]cloudprovider.Instance, len(n.instances))
+	var instances []cloudprovider.Instance
 	for _, instance := range n.instances {
 		instances = append(instances, cloudprovider.Instance{
 			Id:     instance.Id,
@@ -209,8 +209,8 @@ func (n *NodeGroup) createInstances(count int) error {
 		return err
 	}
 	for _, server := range servers {
-		n.instances[server.Id] = &Instance{
-			Id:     server.Id,
+		n.instances[server.Name] = &Instance{
+			Id:     server.Name,
 			Status: &cloudprovider.InstanceStatus{State: cloudprovider.InstanceRunning},
 		}
 	}

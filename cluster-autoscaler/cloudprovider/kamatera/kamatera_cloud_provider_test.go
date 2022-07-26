@@ -78,22 +78,22 @@ kamatera-api-secret=9ii88h7g6f55555ee4444444dd33eee2
 cluster-name=aaabbb
 `)
 	m, _ := newManager(cfg)
-	kamateraServerId1 := mockKamateraServerId()
-	kamateraServerId2 := mockKamateraServerId()
-	kamateraServerId3 := mockKamateraServerId()
-	kamateraServerId4 := mockKamateraServerId()
+	kamateraServerName1 := mockKamateraServerName()
+	kamateraServerName2 := mockKamateraServerName()
+	kamateraServerName3 := mockKamateraServerName()
+	kamateraServerName4 := mockKamateraServerName()
 	ng1 := &NodeGroup{
 		id: "ng1",
 		instances: map[string]*Instance{
-			kamateraServerId1: {Id: kamateraServerId1},
-			kamateraServerId2: {Id: kamateraServerId2},
+			kamateraServerName1: {Id: kamateraServerName1},
+			kamateraServerName2: {Id: kamateraServerName2},
 		},
 	}
 	ng2 := &NodeGroup{
 		id: "ng2",
 		instances: map[string]*Instance{
-			kamateraServerId3: {Id: kamateraServerId3},
-			kamateraServerId4: {Id: kamateraServerId4},
+			kamateraServerName3: {Id: kamateraServerName3},
+			kamateraServerName4: {Id: kamateraServerName4},
 		},
 	}
 	m.nodeGroups = map[string]*NodeGroup{
@@ -105,7 +105,7 @@ cluster-name=aaabbb
 	// test ok on getting the right node group for an apiv1.Node
 	node := &apiv1.Node{
 		Spec: apiv1.NodeSpec{
-			ProviderID: kamateraServerId1,
+			ProviderID: kamateraServerName1,
 		},
 	}
 	ng, err := kcp.NodeGroupForNode(node)
@@ -115,7 +115,7 @@ cluster-name=aaabbb
 	// test ok on getting the right node group for an apiv1.Node
 	node = &apiv1.Node{
 		Spec: apiv1.NodeSpec{
-			ProviderID: kamateraServerId4,
+			ProviderID: kamateraServerName4,
 		},
 	}
 	ng, err = kcp.NodeGroupForNode(node)
@@ -125,7 +125,7 @@ cluster-name=aaabbb
 	// test ok on getting nil when looking for a apiv1.Node we do not manage
 	node = &apiv1.Node{
 		Spec: apiv1.NodeSpec{
-			ProviderID: mockKamateraServerId(),
+			ProviderID: mockKamateraServerName(),
 		},
 	}
 	ng, err = kcp.NodeGroupForNode(node)
