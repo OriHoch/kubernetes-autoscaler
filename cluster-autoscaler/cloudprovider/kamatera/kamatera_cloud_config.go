@@ -33,7 +33,20 @@ const (
 type nodeGroupConfig struct {
 	minSize int
 	maxSize int
-	// TODO: add server configs
+	NamePrefix string
+	Password string
+	SshKey string
+	Datacenter string
+	Image string
+	Cpu string
+	Ram string
+	Disks []string
+	Dailybackup bool
+	Managed bool
+	Networks []string
+	BillingCycle string
+	MonthlyPackage string
+	ScriptBase64 string
 }
 
 // kamateraConfig holds the configuration for the Kamatera provider.
@@ -44,7 +57,6 @@ type kamateraConfig struct {
 	defaultMinSize  int
 	defaultMaxSize  int
 	nodeGroupCfg    map[string]*nodeGroupConfig // key is the node group name
-	// TODO: add default server configs
 }
 
 // GcfgGlobalConfig is the gcfg representation of the global section in the cloud config file for Kamatera.
@@ -52,16 +64,42 @@ type GcfgGlobalConfig struct {
 	KamateraApiClientId string `gcfg:"kamatera-api-client-id"`
 	KamateraApiSecret   string `gcfg:"kamatera-api-secret"`
 	ClusterName 	    string `gcfg:"cluster-name"`
-	DefaultMinSize      string   `gcfg:"default-min-size"`
-	DefaultMaxSize      string   `gcfg:"default-max-size"`
-	// TODO: add default server configs
+	DefaultMinSize      string `gcfg:"default-min-size"`
+	DefaultMaxSize      string `gcfg:"default-max-size"`
+	DefaultNamePrefix string `gcfg:"default-name-prefix"`
+	DefaultPassword string `gcfg:"default-password"`
+	DefaultSshKey string `gcfg:"default-ssh-key"`
+	DefaultDatacenter string `gcfg:"default-datacenter"`
+	DefaultImage string `gcfg:"default-image"`
+	DefaultCpu string `gcfg:"default-cpu"`
+	DefaultRam string `gcfg:"default-ram"`
+	DefaultDisks []string `gcfg:"default-disk"`
+	DefaultDailybackup bool `gcfg:"default-dailybackup"`
+	DefaultManaged bool `gcfg:"default-managed"`
+	DefaultNetworks []string `gcfg:"default-network"`
+	DefaultBillingCycle string `gcfg:"default-billingcycle"`
+	DefaultMonthlyPackage string `gcfg:"default-monthlypackage"`
+	DefaultScriptBase64 string `gcfg:"default-script-base64"`
 }
 
 // GcfgNodeGroupConfig is the gcfg representation of the section in the cloud config file to change defaults for a node group.
 type GcfgNodeGroupConfig struct {
 	MinSize string `gcfg:"min-size"`
 	MaxSize string `gcfg:"max-size"`
-	// TODO: add server configs
+	NamePrefix string `gcfg:"name-prefix"`
+	Password string `gcfg:"password"`
+	SshKey string `gcfg:"ssh-key"`
+	Datacenter string `gcfg:"datacenter"`
+	Image string `gcfg:"image"`
+	Cpu string `gcfg:"cpu"`
+	Ram string `gcfg:"ram"`
+	Disks []string `gcfg:"disk"`
+	Dailybackup bool `gcfg:"dailybackup"`
+	Managed bool `gcfg:"managed"`
+	Networks []string `gcfg:"network"`
+	BillingCycle string `gcfg:"billingcycle"`
+	MonthlyPackage string `gcfg:"monthlypackage"`
+	ScriptBase64 string `gcfg:"script-base64"`
 }
 
 // gcfgCloudConfig is the gcfg representation of the cloud config file for Kamatera.
@@ -119,9 +157,79 @@ func buildCloudConfig(config io.Reader) (*kamateraConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("cannot get size values for node group %s: %v", nodeGroupName, err)
 		}
+		namePrefix := gcfgCloudConfig.Global.DefaultNamePrefix
+		if len(gcfgNodeGroup.NamePrefix) > 0 {
+			namePrefix = gcfgNodeGroup.NamePrefix
+		}
+		password := gcfgCloudConfig.Global.DefaultPassword
+		if len(gcfgNodeGroup.Password) > 0 {
+			password = gcfgNodeGroup.Password
+		}
+		sshKey := gcfgCloudConfig.Global.DefaultSshKey
+		if len(gcfgNodeGroup.SshKey) > 0 {
+			sshKey = gcfgNodeGroup.SshKey
+		}
+		datacenter := gcfgCloudConfig.Global.DefaultDatacenter
+		if len(gcfgNodeGroup.Datacenter) > 0 {
+			datacenter = gcfgNodeGroup.Datacenter
+		}
+		image := gcfgCloudConfig.Global.DefaultImage
+		if len(gcfgNodeGroup.Image) > 0 {
+			image = gcfgNodeGroup.Image
+		}
+		cpu := gcfgCloudConfig.Global.DefaultCpu
+		if len(gcfgNodeGroup.Cpu) > 0 {
+			cpu = gcfgNodeGroup.Cpu
+		}
+		ram := gcfgCloudConfig.Global.DefaultRam
+		if len(gcfgNodeGroup.Ram) > 0 {
+			ram = gcfgNodeGroup.Ram
+		}
+		disks := gcfgCloudConfig.Global.DefaultDisks
+		if gcfgNodeGroup.Disks != nil {
+			disks = gcfgNodeGroup.Disks
+		}
+		dailybackup := gcfgCloudConfig.Global.DefaultDailybackup
+		if gcfgNodeGroup.Dailybackup {
+			dailybackup = gcfgNodeGroup.Dailybackup
+		}
+		managed := gcfgCloudConfig.Global.DefaultManaged
+		if gcfgNodeGroup.Managed {
+			managed = gcfgNodeGroup.Managed
+		}
+		networks := gcfgCloudConfig.Global.DefaultNetworks
+		if gcfgNodeGroup.Networks != nil {
+			networks = gcfgNodeGroup.Networks
+		}
+		billingCycle := gcfgCloudConfig.Global.DefaultBillingCycle
+		if len(gcfgNodeGroup.BillingCycle) > 0 {
+			billingCycle = gcfgNodeGroup.BillingCycle
+		}
+		monthlyPackage := gcfgCloudConfig.Global.DefaultMonthlyPackage
+		if len(gcfgNodeGroup.MonthlyPackage) > 0 {
+			monthlyPackage = gcfgNodeGroup.MonthlyPackage
+		}
+		scriptBase64 := gcfgCloudConfig.Global.DefaultScriptBase64
+		if len(gcfgNodeGroup.ScriptBase64) > 0 {
+			scriptBase64 = gcfgNodeGroup.ScriptBase64
+		}
 		ngc := &nodeGroupConfig{
 			maxSize: maxSize,
 			minSize: minSize,
+			NamePrefix: namePrefix,
+			Password: password,
+			SshKey: sshKey,
+			Datacenter: datacenter,
+			Image: image,
+			Cpu: cpu,
+			Ram: ram,
+			Disks: disks,
+			Dailybackup: dailybackup,
+			Managed: managed,
+			Networks: networks,
+			BillingCycle: billingCycle,
+			MonthlyPackage: monthlyPackage,
+			ScriptBase64: scriptBase64,
 		}
 		nodeGroupCfg[nodeGroupName] = ngc
 	}

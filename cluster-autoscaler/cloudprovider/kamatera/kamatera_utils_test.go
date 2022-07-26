@@ -28,6 +28,27 @@ func mockKamateraServerName() string {
 	return fmt.Sprintf("%s", hex.EncodeToString(uuid.NewV4().Bytes()))
 }
 
+func mockServerConfig(namePrefix string, tags []string) ServerConfig {
+	return ServerConfig{
+		NamePrefix:     namePrefix,
+		Password:       "",
+		SshKey:         "",
+		Datacenter:     "IL",
+		Image:          "ubuntu_server_18.04_64-bit",
+		Cpu:            "1A",
+		Ram:            "1024",
+		Disks:          []string{"size=10"},
+		Dailybackup:    false,
+		Managed:        false,
+		Networks:       []string{"name=wan,ip=auto"},
+		BillingCycle:   "hourly",
+		MonthlyPackage: "",
+		ScriptFile:     "#!/bin/bash",
+		UserdataFile:   "",
+		Tags:           tags,
+	}
+}
+
 type kamateraClientMock struct {
 	mock.Mock
 }
@@ -41,8 +62,8 @@ func (c *kamateraClientMock) ListServersByTag(ctx context.Context, tag string) (
 	return args.Get(0).([]Server), args.Error(1)
 }
 
-func (c *kamateraClientMock) CreateServers(ctx context.Context, count int) ([]Server, error) {
-	args := c.Called(ctx, count)
+func (c *kamateraClientMock) CreateServers(ctx context.Context, count int, config ServerConfig) ([]Server, error) {
+	args := c.Called(ctx, count, config)
 	return args.Get(0).([]Server), args.Error(1)
 }
 

@@ -125,10 +125,12 @@ func TestApiClientRest_CreateServers(t *testing.T) {
 		"application/json",
 		`[{"status": "complete"}]`,
 	).Twice()
-	servers, err := client.CreateServers(ctx, 2)
+	servers, err := client.CreateServers(ctx, 2, mockServerConfig("test", []string{"foo", "bar"}))
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(servers))
 	assert.Less(t, 10, len(servers[0].Name))
 	assert.Less(t, 10, len(servers[1].Name))
+	assert.Equal(t, servers[0].Tags, []string{"foo", "bar"})
+	assert.Equal(t, servers[1].Tags, []string{"foo", "bar"})
 	mock.AssertExpectationsForObjects(t, server)
 }

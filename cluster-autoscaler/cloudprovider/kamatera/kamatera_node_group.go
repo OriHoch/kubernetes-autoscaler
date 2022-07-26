@@ -34,6 +34,7 @@ type NodeGroup struct {
 	minSize      int
 	maxSize      int
 	instances    map[string]*Instance // key is the instance ID
+	serverConfig ServerConfig
 }
 
 // MaxSize returns maximum size of the node group.
@@ -204,7 +205,7 @@ func (n *NodeGroup) deleteInstance(instance *Instance) error {
 }
 
 func (n *NodeGroup) createInstances(count int) error {
-	servers, err := n.manager.client.CreateServers(context.Background(), count)
+	servers, err := n.manager.client.CreateServers(context.Background(), count, n.serverConfig)
 	if err != nil {
 		return err
 	}

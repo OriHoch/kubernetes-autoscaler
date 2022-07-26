@@ -43,6 +43,7 @@ Following are the supported server configuration keys, see the [example config](
 
 | Key | Value | Mandatory | Default |
 |-----|-------|-----------|---------|
+| name-prefix | Prefix for all created server names | no | none |
 | password | Server root password | no | none |
 | ssh-key | Public SSH key to add to the server authorized keys | no | none |
 | datacenter | Datacenter ID | yes | none |
@@ -50,30 +51,52 @@ Following are the supported server configuration keys, see the [example config](
 | cpu | CPU type and size identifier | yes | none |
 | ram | RAM size in MB | yes | none |
 | disk | Disk specifications - see below for details | yes | none |
-| dailybackup | \"yes\" or \"no\" - enable daily backups | no | \"no\" |
-| managed | \"yes\" or \"no\" - enable managed services | no | \"no\" |
+| dailybackup | boolean - set to true to enable daily backups | no | false |
+| managed | boolean - set to true to enable managed services | no | false |
 | network | Network specifications - see below for details | yes | none |
 | billingcycle | \"hourly\" or \"monthly\" | no | \"hourly\" |
 | monthlypackage | For monthly billing only - the monthly network package to use | no | none |
-| script | Server initialization script, must be provided to connect the server to the cluster, see below for details | no | none |
+| script-base64 | base64 encoded server initialization script, must be provided to connect the server to the cluster, see below for details | no | none |
 
 ### Disk specifications
 
 Server disks are specified using an array of strings which are the same as the cloudcli `--disk` argument
 as specified in [cloudcli server create](https://github.com/cloudwm/cloudcli/blob/master/docs/cloudcli_server_create.md).
-For multiple disks, the disk specification strings are separated by spaces, following are some examples:
+For multiple disks, include the configuration multiple times, example:
 
-* single disk of size 50gb: `size=50`
-* 2 disks, 1st with 50gb, 2nd with 100gb: `size=50 size=100`
+```
+[global]
+; default for all node groups: single 100gb disk
+default-disk = "size=100"
+
+[nodegroup "ng1"]
+; this node group will use the default
+
+[nodegroup "ng2"]
+; override the default and use 2 disks
+disk = "size=100"
+disk = "size=200"
+```
 
 ### Network specifications
 
 Networks are specified using an array of strings which are the same as the cloudcli `--network` argument
 as specified in [cloudcli server create](https://github.com/cloudwm/cloudcli/blob/master/docs/cloudcli_server_create.md).
-For multiple networks, the network specification strings are separated by spaces, following are some examples:
+For multiple networks, include the configuration multiple times, example:
 
-* single WAN network interface with auto-assigned ip: `name=wan,ip=auto`
-* 2 network interfaces, 1st with a WAN auto-assigned IP, 2nd with a LAN auto-assigned IP: `name=wan,ip=auto name=lan-12345-abcde,ip=auto`
+```
+[global]
+; default for all node groups: single public network with auto-assigned ip
+default-network = "name=wan,ip=auto"
+
+[nodegroup "ng1"]
+; this node group will use the default
+
+[nodegroup "ng2"]
+; override the default and attach 2 networks - 1 public and 1 private
+network = "name=wan,ip=auto"
+network = "name=lan-12345-abcde,ip=auto"
+```
 
 ### Server Initialization Script
 

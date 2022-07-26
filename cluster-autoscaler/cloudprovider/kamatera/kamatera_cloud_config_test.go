@@ -63,11 +63,39 @@ kamatera-api-secret=9ii88h7g6f55555ee4444444dd33eee2
 cluster-name=aaabbb
 default-min-size=1
 default-max-size=10
+default-name-prefix=test
+default-password=Aa123456!
+default-ssh-key=ssh-rsa AAAA...
+default-datacenter=IL
+default-image=ubuntu-1604-x64-server-2016-03-01
+default-cpu=1a
+default-ram=1024
+default-disk=size=10
+default-disk=size=20
+default-network=name=wan,ip=auto
+default-billingcycle=hourly
+default-monthlypackage=t5000
+default-script-base64=ZGVmYXVsdAo=
 
 [nodegroup "default"]
 
 [nodegroup "highcpu"]
 min-size=3
+name-prefix=highcpu
+password=Bb654321!
+ssh-key=ssh-rsa BBBB...
+datacenter=US
+image=ubuntu-2204
+cpu=2a
+ram=2048
+disk=size=50
+dailybackup=true
+managed=true
+network=name=wan,ip=auto
+network=name=lan-12345-lan,ip=auto
+billingcycle=monthly
+monthlypackage=t10000
+script-base64=aGlnaGJwdQo=
 
 [nodegroup "highram"]
 max-size=2
@@ -86,6 +114,38 @@ max-size=2
 	assert.Equal(t, 10, config.nodeGroupCfg["highcpu"].maxSize)
 	assert.Equal(t, 1, config.nodeGroupCfg["highram"].minSize)
 	assert.Equal(t, 2, config.nodeGroupCfg["highram"].maxSize)
+
+	// default server configurations
+	assert.Equal(t, "test", config.nodeGroupCfg["default"].NamePrefix)
+	assert.Equal(t, "Aa123456!", config.nodeGroupCfg["default"].Password)
+	assert.Equal(t, "ssh-rsa AAAA...", config.nodeGroupCfg["default"].SshKey)
+	assert.Equal(t, "IL", config.nodeGroupCfg["default"].Datacenter)
+	assert.Equal(t, "ubuntu-1604-x64-server-2016-03-01", config.nodeGroupCfg["default"].Image)
+	assert.Equal(t, "1a", config.nodeGroupCfg["default"].Cpu)
+	assert.Equal(t, "1024", config.nodeGroupCfg["default"].Ram)
+	assert.Equal(t, []string{"size=10", "size=20"}, config.nodeGroupCfg["default"].Disks)
+	assert.False(t, config.nodeGroupCfg["default"].Dailybackup)
+	assert.False(t, config.nodeGroupCfg["default"].Managed)
+	assert.Equal(t, []string{"name=wan,ip=auto"}, config.nodeGroupCfg["default"].Networks)
+	assert.Equal(t, "hourly", config.nodeGroupCfg["default"].BillingCycle)
+	assert.Equal(t, "t5000", config.nodeGroupCfg["default"].MonthlyPackage)
+	assert.Equal(t, "ZGVmYXVsdAo=", config.nodeGroupCfg["default"].ScriptBase64)
+
+	// highcpu server configurations
+	assert.Equal(t, "highcpu", config.nodeGroupCfg["highcpu"].NamePrefix)
+	assert.Equal(t, "Bb654321!", config.nodeGroupCfg["highcpu"].Password)
+	assert.Equal(t, "ssh-rsa BBBB...", config.nodeGroupCfg["highcpu"].SshKey)
+	assert.Equal(t, "US", config.nodeGroupCfg["highcpu"].Datacenter)
+	assert.Equal(t, "ubuntu-2204", config.nodeGroupCfg["highcpu"].Image)
+	assert.Equal(t, "2a", config.nodeGroupCfg["highcpu"].Cpu)
+	assert.Equal(t, "2048", config.nodeGroupCfg["highcpu"].Ram)
+	assert.Equal(t, []string{"size=50"}, config.nodeGroupCfg["highcpu"].Disks)
+	assert.True(t, config.nodeGroupCfg["highcpu"].Dailybackup)
+	assert.True(t, config.nodeGroupCfg["highcpu"].Managed)
+	assert.Equal(t, []string{"name=wan,ip=auto", "name=lan-12345-lan,ip=auto"}, config.nodeGroupCfg["highcpu"].Networks)
+	assert.Equal(t, "monthly", config.nodeGroupCfg["highcpu"].BillingCycle)
+	assert.Equal(t, "t10000", config.nodeGroupCfg["highcpu"].MonthlyPackage)
+	assert.Equal(t, "aGlnaGJwdQo=", config.nodeGroupCfg["highcpu"].ScriptBase64)
 
 	cfg = strings.NewReader(`
 [global]

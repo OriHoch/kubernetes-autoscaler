@@ -35,6 +35,7 @@ func TestNodeGroup_IncreaseSize(t *testing.T) {
 	serverName1 := mockKamateraServerName()
 	serverName2 := mockKamateraServerName()
 	serverName3 := mockKamateraServerName()
+	serverConfig := mockServerConfig("test", []string{})
 	ng := NodeGroup{
 		id:        "ng1",
 		manager:   &mgr,
@@ -45,6 +46,7 @@ func TestNodeGroup_IncreaseSize(t *testing.T) {
 			serverName2: {Id: serverName2, Status: &cloudprovider.InstanceStatus{State: cloudprovider.InstanceRunning}},
 			serverName3: {Id: serverName3, Status: &cloudprovider.InstanceStatus{State: cloudprovider.InstanceRunning}},
 		},
+		serverConfig: serverConfig,
 	}
 
 	// test error on bad delta values
@@ -63,7 +65,7 @@ func TestNodeGroup_IncreaseSize(t *testing.T) {
 
 	// test ok to add a node
 	client.On(
-		"CreateServers", ctx, 1,
+		"CreateServers", ctx, 1, serverConfig,
 	).Return(
 		[]Server{{Name: mockKamateraServerName()}} , nil,
 	).Once()
@@ -74,7 +76,7 @@ func TestNodeGroup_IncreaseSize(t *testing.T) {
 
 	// test ok to add multiple nodes
 	client.On(
-		"CreateServers", ctx, 2,
+		"CreateServers", ctx, 2, serverConfig,
 	).Return(
 		[]Server{
 			{Name: mockKamateraServerName()},
@@ -87,7 +89,7 @@ func TestNodeGroup_IncreaseSize(t *testing.T) {
 
 	// test error on linode API call error
 	client.On(
-		"CreateServers", ctx, 1,
+		"CreateServers", ctx, 1, serverConfig,
 	).Return(
 		[]Server{}, fmt.Errorf("error on API call"),
 	).Once()

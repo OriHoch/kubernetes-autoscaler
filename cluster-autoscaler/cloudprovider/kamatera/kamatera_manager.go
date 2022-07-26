@@ -18,6 +18,7 @@ package kamatera
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -78,9 +79,63 @@ func (m *manager) refresh() error {
 }
 
 func (m *manager) buildNodeGroup(name string, cfg *nodeGroupConfig, servers []Server) (*NodeGroup, error) {
+	// TODO: do validation of server args with Kamatera api
 	instances, err := m.getNodeGroupInstances(name, servers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances for node group %s: %v", name, err)
+	}
+	scriptBytes, err := base64.StdEncoding.DecodeString(cfg.ScriptBase64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode script for node group %s: %v", name, err)
+	}
+	script := string(scriptBytes)
+	if len(script) < 1 {
+		return nil, fmt.Errorf("script for node group %s is empty", name)
+	}
+	if len(cfg.Datacenter) < 1 {
+		return nil, fmt.Errorf("datacenter for node group %s is empty", name)
+	}
+	if len(cfg.Image) < 1 {
+		return nil, fmt.Errorf("image for node group %s is empty", name)
+	}
+	if len(cfg.Cpu) < 1 {
+		return nil, fmt.Errorf("cpu for node group %s is empty", name)
+	}
+	if len(cfg.Ram) < 1 {
+		return nil, fmt.Errorf("ram for node group %s is empty", name)
+	}
+	if len(cfg.Disks) < 1 {
+		return nil, fmt.Errorf("no disks for node group %s", name)
+	}
+	if len(cfg.Networks) < 1 {
+		return nil, fmt.Errorf("no networks for node group %s", name)
+	}
+	billingCycle := cfg.BillingCycle
+	if billingCycle == "" {
+		billingCycle = "hourly"
+	} else if billingCycle != "hourly" && billingCycle != "monthly" {
+		return nil, fmt.Errorf("billing cycle for node group %s is invalid", name)
+	}
+	serverConfig := ServerConfig{
+		NamePrefix:     cfg.NamePrefix,
+		Password:       cfg.Password,
+		SshKey:         cfg.SshKey,
+		Datacenter:     cfg.Datacenter,
+		Image:          cfg.Image,
+		Cpu:            cfg.Cpu,
+		Ram:            cfg.Ram,
+		Disks:          cfg.Disks,
+		Dailybackup:    cfg.Dailybackup,
+		Managed:        cfg.Managed,
+		Networks:       cfg.Networks,
+		BillingCycle:   billingCycle,
+		MonthlyPackage: cfg.MonthlyPackage,
+		ScriptFile: 	script,
+		UserdataFile:   "",
+		Tags:           []string{
+			fmt.Sprintf("%s%s", clusterServerTagPrefix, m.config.clusterName),
+			fmt.Sprintf("%s%s", nodeGroupTagPrefix, name),
+		},
 	}
 	ng := &NodeGroup{
 		id: name,
@@ -88,6 +143,7 @@ func (m *manager) buildNodeGroup(name string, cfg *nodeGroupConfig, servers []Se
 		minSize: cfg.minSize,
 		maxSize: cfg.maxSize,
 		instances: instances,
+		serverConfig: serverConfig,
 	}
 	return ng, nil
 }

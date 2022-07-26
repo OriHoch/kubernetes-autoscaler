@@ -25,7 +25,7 @@ type kamateraAPIClient interface {
 	SetBaseURL(baseURL string)
 	ListServersByTag(ctx context.Context, tag string) ([]Server, error)
 	DeleteServer(ctx context.Context, name string) error
-	CreateServers(ctx context.Context, count int) ([]Server, error)
+	CreateServers(ctx context.Context, count int, config ServerConfig) ([]Server, error)
 }
 
 // buildKamateraAPIClient returns the struct ready to perform calls to kamatera API

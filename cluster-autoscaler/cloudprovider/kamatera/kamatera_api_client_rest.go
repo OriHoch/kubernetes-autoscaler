@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"github.com/satori/go.uuid"
 	"k8s.io/autoscaler/cluster-autoscaler/version"
+	"strings"
 )
 
 const (
@@ -150,14 +151,31 @@ func (c *KamateraApiClientRest) DeleteServer(ctx context.Context, name string) e
 	return nil
 }
 
-func (c *KamateraApiClientRest) CreateServers(ctx context.Context, count int) ([]Server, error) {
-	// TODO: add configurable server params
-	// TODO: add configurable server name prefix
-	// TODO: add server tags based on node tags
-	baseName := fmt.Sprintf("test-%s", hex.EncodeToString(uuid.NewV4().Bytes()))
+func (c *KamateraApiClientRest) CreateServers(ctx context.Context, count int, config ServerConfig) ([]Server, error) {
+	var tags []string
+	for _, tag := range config.Tags {
+		tags = append(tags, tag)
+	}
+	Tag, err := kamateraRequestArray(tags)
+	if err != nil {
+		return nil, err
+	}
+	Network, err := kamateraRequestArray(config.Networks)
+	if err != nil {
+		return nil, err
+	}
+	Disk, err := kamateraRequestArray(config.Disks)
+	if err != nil {
+		return nil, err
+	}
 	serverNameCommandIds := make(map[string]string)
 	for i := 0; i < count; i++ {
-		serverName := fmt.Sprintf("%s-%d", baseName, i)
+		var serverName string
+		if len(config.NamePrefix) > 0 {
+			serverName = fmt.Sprintf("%s-%s", config.NamePrefix, hex.EncodeToString(uuid.NewV4().Bytes()))
+		} else {
+			serverName = fmt.Sprintf("%s", hex.EncodeToString(uuid.NewV4().Bytes()))
+		}
 		res, err := request(
 			ctx,
 			ProviderConfig{ApiUrl: c.baseURL, ApiClientID: c.clientId, ApiSecret: c.secret},
@@ -165,24 +183,24 @@ func (c *KamateraApiClientRest) CreateServers(ctx context.Context, count int) ([
 			"/service/server",
 			KamateraServerCreatePostRequest{
 				Name:               serverName,
-				Password:           "",
-				PasswordValidate:   "",
-				SshKey:             "ssh-rsa AAAA== root@localhost",
-				Datacenter:         "IL",
-				Image:              "ubuntu_server_18.04_64-bit",
-				Cpu:                "1A",
-				Ram:                "1024",
-				Disk:               "size=10",
-				Dailybackup:        "no",
-				Managed:            "no",
-				Network:            "name=wan,ip=auto",
+				Password:           config.Password,
+				PasswordValidate:   config.Password,
+				SshKey:             config.SshKey,
+				Datacenter:         config.Datacenter,
+				Image:              config.Image,
+				Cpu:                config.Cpu,
+				Ram:                config.Ram,
+				Disk:               Disk,
+				Dailybackup:        kamateraRequestBool(config.Dailybackup),
+				Managed:            kamateraRequestBool(config.Managed),
+				Network:            Network,
 				Quantity:           1,
-				BillingCycle:       "hourly",
-				MonthlyPackage:     "",
+				BillingCycle:       config.BillingCycle,
+				MonthlyPackage:     config.MonthlyPackage,
 				Poweronaftercreate: "yes",
-				ScriptFile:         "",
-				UserdataFile:       "",
-				Tag:                "",
+				ScriptFile:         config.ScriptFile,
+				UserdataFile:       config.UserdataFile,
+				Tag:                Tag,
 			},
 		)
 		if err != nil {
@@ -201,8 +219,8 @@ func (c *KamateraApiClientRest) CreateServers(ctx context.Context, count int) ([
 	var servers []Server
 	for serverName, _ := range results {
 		servers = append(servers, Server{
-			Name:   serverName,
-			Tags: []string{},
+			Name: serverName,
+			Tags: tags,
 		})
 	}
 	return servers, nil
@@ -225,4 +243,21 @@ func (c *KamateraApiClientRest) getServerTags(ctx context.Context, serverName st
 		tags = append(tags, row["tag name"].(string))
 	}
 	return tags, nil
+}
+
+func kamateraRequestBool(val bool) string {
+	if val {
+		return "yes"
+	} else {
+		return "no"
+	}
+}
+
+func kamateraRequestArray(val []string) (string, error) {
+	for _, v := range val {
+		if strings.Contains(v, " ") {
+			return "", fmt.Errorf("invalid tag (\"%s\"): contains space", v)
+		}
+	}
+	return strings.Join(val, ","), nil
 }
