@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
+	"regexp"
 
 	klog "k8s.io/klog/v2"
 )
@@ -37,6 +38,7 @@ type manager struct {
 	client     kamateraAPIClient
 	config     *kamateraConfig
 	nodeGroups map[string]*NodeGroup // key: NodeGroup.id
+	instances  map[string]*Instance  // key: Instance.id (which is also the Kamatera server name)
 }
 
 func newManager(config io.Reader) (*manager, error) {
@@ -49,15 +51,18 @@ func newManager(config io.Reader) (*manager, error) {
 		client:     client,
 		config:     cfg,
 		nodeGroups: make(map[string]*NodeGroup),
+		instances:  make(map[string]*Instance),
 	}
 	return m, nil
 }
 
 func (m *manager) refresh() error {
-	servers, error := m.client.ListServersByTag(context.Background(),
-		fmt.Sprintf("%s%s", clusterServerTagPrefix, m.config.clusterName))
-	if error != nil {
-		return fmt.Errorf("failed to get list of Kamatera servers from Kamatera API: %v", error)
+	servers, err := m.client.ListServers(
+		context.Background(),
+		m.instances,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to get list of Kamatera servers from Kamatera API: %v", err)
 	}
 	nodeGroups := make(map[string]*NodeGroup)
 	for nodeGroupName, nodeGroupCfg := range m.config.nodeGroupCfg {
@@ -83,6 +88,10 @@ func (m *manager) buildNodeGroup(name string, cfg *nodeGroupConfig, servers []Se
 	instances, err := m.getNodeGroupInstances(name, servers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances for node group %s: %v", name, err)
+	}
+	password := cfg.Password
+	if len(password) == 0 {
+		password = "__generate__"
 	}
 	scriptBytes, err := base64.StdEncoding.DecodeString(cfg.ScriptBase64)
 	if err != nil {
@@ -116,9 +125,29 @@ func (m *manager) buildNodeGroup(name string, cfg *nodeGroupConfig, servers []Se
 	} else if billingCycle != "hourly" && billingCycle != "monthly" {
 		return nil, fmt.Errorf("billing cycle for node group %s is invalid", name)
 	}
+	tags := []string{
+		fmt.Sprintf("%s%s", clusterServerTagPrefix, m.config.clusterName),
+		fmt.Sprintf("%s%s", nodeGroupTagPrefix, name),
+	}
+	for _, tag := range tags {
+		if len(tag) < 3 {
+			return nil, fmt.Errorf("tag %s is too short, must be at least 3 characters", tag)
+		}
+		if len(tag) > 24 {
+			return nil, fmt.Errorf("tag %s is too long, must be at most 24 characters", tag)
+		}
+		tagRegexp := `^[a-zA-Z0-9\-_\s\.]{3,24}$`
+		matched, err := regexp.MatchString(tagRegexp, tag)
+		if err != nil {
+			return nil, fmt.Errorf("failed to validate tag %s: %v", tag, err)
+		}
+		if !matched {
+			return nil, fmt.Errorf("tag %s is invalid, must contain only English letters, numbers, dash, underscore, space, dot", tag)
+		}
+	}
 	serverConfig := ServerConfig{
 		NamePrefix:     cfg.NamePrefix,
-		Password:       cfg.Password,
+		Password:       password,
 		SshKey:         cfg.SshKey,
 		Datacenter:     cfg.Datacenter,
 		Image:          cfg.Image,
@@ -132,10 +161,7 @@ func (m *manager) buildNodeGroup(name string, cfg *nodeGroupConfig, servers []Se
 		MonthlyPackage: cfg.MonthlyPackage,
 		ScriptFile: 	script,
 		UserdataFile:   "",
-		Tags:           []string{
-			fmt.Sprintf("%s%s", clusterServerTagPrefix, m.config.clusterName),
-			fmt.Sprintf("%s%s", nodeGroupTagPrefix, name),
-		},
+		Tags:           tags,
 	}
 	ng := &NodeGroup{
 		id: name,
@@ -149,22 +175,63 @@ func (m *manager) buildNodeGroup(name string, cfg *nodeGroupConfig, servers []Se
 }
 
 func (m *manager) getNodeGroupInstances(name string, servers []Server) (map[string]*Instance, error) {
+	clusterTag := fmt.Sprintf("%s%s", clusterServerTagPrefix, m.config.clusterName)
 	nodeGroupTag := fmt.Sprintf("%s%s", nodeGroupTagPrefix, name)
 	instances := make(map[string]*Instance)
 	for _, server := range servers {
+		hasClusterTag := false
 		hasNodeGroupTag := false
 		for _, tag := range server.Tags {
 			if tag == nodeGroupTag {
 				hasNodeGroupTag = true
-				break
+			} else if tag == clusterTag {
+				hasClusterTag = true
 			}
 		}
-		if hasNodeGroupTag {
-			instances[server.Name] = &Instance{
-				Id:     server.Name,
-				Status: &cloudprovider.InstanceStatus{State: cloudprovider.InstanceRunning},
+		if m.instances[server.Name] == nil {
+			var state cloudprovider.InstanceState
+			if server.PowerOn {
+				state = cloudprovider.InstanceRunning
+			} else {
+				// for new servers that are stopped we assume they were deleted previously and deletion failed
+				state = cloudprovider.InstanceDeleting
 			}
+			m.instances[server.Name] = &Instance{
+				Id:     server.Name,
+				Status: &cloudprovider.InstanceStatus{State: state},
+				PowerOn: server.PowerOn,
+				Tags:  server.Tags,
+			}
+		} else {
+			if server.PowerOn {
+				m.instances[server.Name].Status.State = cloudprovider.InstanceRunning
+			} else {
+				// we can only make assumption about server state being powered on
+				// for other conditions we can't know why server is powered off, so we can't update state
+			}
+			m.instances[server.Name] = m.instances[server.Name]
+			m.instances[server.Name].PowerOn = server.PowerOn
+			m.instances[server.Name].Tags = server.Tags
+		}
+		if hasClusterTag && hasNodeGroupTag {
+			instances[server.Name] = m.instances[server.Name]
 		}
 	}
 	return instances, nil
+}
+
+func (m *manager) addInstance(server Server, state cloudprovider.InstanceState) (*Instance, error) {
+	if m.instances[server.Name] == nil {
+		m.instances[server.Name] = &Instance{
+			Id:     server.Name,
+			Status: &cloudprovider.InstanceStatus{State: state},
+			PowerOn: server.PowerOn,
+			Tags:  server.Tags,
+		}
+	} else {
+		m.instances[server.Name].Status.State = state
+		m.instances[server.Name].PowerOn = server.PowerOn
+		m.instances[server.Name].Tags = server.Tags
+	}
+	return m.instances[server.Name], nil
 }

@@ -17,7 +17,9 @@ limitations under the License.
 package kamatera
 
 // Server contains information about a Kamatera server, as fetched from the API
+// It is used by the manager to keep track of the servers in the cluster.
 type Server struct {
 	Name string
 	Tags []string
+	PowerOn bool
 }

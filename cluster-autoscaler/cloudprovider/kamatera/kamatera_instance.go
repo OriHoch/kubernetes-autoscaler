@@ -18,6 +18,7 @@ package kamatera
 
 import (
 	"context"
+	"fmt"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 )
 
@@ -28,8 +29,24 @@ type Instance struct {
 	Id string
 	// Status represents status of the node. (Optional)
 	Status *cloudprovider.InstanceStatus
+	// Kamatera specific fields
+	PowerOn bool
+	Tags []string
 }
 
 func (i *Instance) delete(client kamateraAPIClient) error {
+	i.Status.State = cloudprovider.InstanceDeleting
 	return client.DeleteServer(context.Background(), i.Id)
+}
+
+func (i *Instance) extendedDebug() string {
+	state := ""
+	if i.Status.State == cloudprovider.InstanceRunning {
+		state = "Running"
+	} else if i.Status.State == cloudprovider.InstanceCreating {
+		state = "Creating"
+	} else if i.Status.State == cloudprovider.InstanceDeleting {
+		state = "Deleting"
+	}
+	return fmt.Sprintf("instance ID: %s state: %s powerOn: %v", i.Id, state, i.PowerOn)
 }

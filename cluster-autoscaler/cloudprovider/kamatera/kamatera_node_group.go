@@ -20,9 +20,13 @@ import (
 	"context"
 	"fmt"
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"strconv"
+	"strings"
 )
 
 // NodeGroup implements cloudprovider.NodeGroup interface. NodeGroup contains
@@ -143,7 +147,27 @@ func (n *NodeGroup) Nodes() ([]cloudprovider.Instance, error) {
 // capacity and allocatable information as well as all pods that are started on
 // the node by default, using manifest (most likely only kube-proxy). Implementation optional.
 func (n *NodeGroup) TemplateNodeInfo() (*schedulerframework.NodeInfo, error) {
-	return nil, cloudprovider.ErrNotImplemented
+	resourceList, err := n.getResourceList()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resource list for node group %s error: %v", n.id, err)
+	}
+	node := apiv1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   kamateraServerName(""),
+			Labels: map[string]string{},
+		},
+		Status: apiv1.NodeStatus{
+			Capacity:   resourceList,
+			Conditions: cloudprovider.BuildReadyConditions(),
+		},
+	}
+	node.Status.Allocatable = node.Status.Capacity
+	node.Status.Conditions = cloudprovider.BuildReadyConditions()
+
+	nodeInfo := schedulerframework.NewNodeInfo(cloudprovider.BuildKubeProxy(n.id))
+	nodeInfo.SetNode(&node)
+
+	return nodeInfo, nil
 }
 
 // Exist checks if the node group really exists on the cloud provider side. Allows to tell the
@@ -178,9 +202,6 @@ func (n *NodeGroup) GetOptions(defaults config.NodeGroupAutoscalingOptions) (*co
 }
 
 func (n *NodeGroup) findInstanceForNode(node *apiv1.Node) (*Instance, error) {
-	if len(node.Spec.ProviderID) < 10 {
-		return nil, fmt.Errorf("Invalid node ProviderID: %s", node.Spec.ProviderID)
-	}
 	for _, instance := range n.instances {
 		if instance.Id == node.Spec.ProviderID {
 			return instance, nil
@@ -210,15 +231,50 @@ func (n *NodeGroup) createInstances(count int) error {
 		return err
 	}
 	for _, server := range servers {
-		n.instances[server.Name] = &Instance{
-			Id:     server.Name,
-			Status: &cloudprovider.InstanceStatus{State: cloudprovider.InstanceRunning},
+		instance, err := n.manager.addInstance(server, cloudprovider.InstanceCreating)
+		if err != nil {
+			return err
 		}
+		n.instances[server.Name] = instance
 	}
 	return nil
 }
 
 func (n *NodeGroup) extendedDebug() string {
 	// TODO: provide extended debug information regarding this node group
-	return n.Debug()
+	msgs := []string{n.Debug()}
+	for _, instance := range n.instances {
+		msgs = append(msgs, instance.extendedDebug())
+	}
+	return strings.Join(msgs, "\n")
+}
+
+func (n *NodeGroup) getResourceList() (apiv1.ResourceList, error) {
+	ramMb, err := strconv.Atoi(n.serverConfig.Ram)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: handle CPU types
+	cpuCores, err := strconv.Atoi(n.serverConfig.Cpu[0:len(n.serverConfig.Cpu)-1])
+	if err != nil {
+		return nil, err
+	}
+	// TODO: handle additional disks
+	firstDiskSpec := n.serverConfig.Disks[0]
+	firstDiskSizeGb := 0
+	for _, attr := range strings.Split(firstDiskSpec, ",") {
+		if strings.HasPrefix(attr, "size=") {
+			firstDiskSizeGb, err = strconv.Atoi(strings.Split(attr, "=")[1])
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return apiv1.ResourceList{
+		// TODO somehow determine the actual pods that will be running
+		apiv1.ResourcePods:    *resource.NewQuantity(110, resource.DecimalSI),
+		apiv1.ResourceCPU:     *resource.NewQuantity(int64(cpuCores), resource.DecimalSI),
+		apiv1.ResourceMemory:  *resource.NewQuantity(int64(ramMb*1024*1024*1024), resource.DecimalSI),
+		apiv1.ResourceStorage: *resource.NewQuantity(int64(firstDiskSizeGb*1024*1024*1024), resource.DecimalSI),
+	}, nil
 }
