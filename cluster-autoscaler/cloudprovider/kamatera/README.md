@@ -14,11 +14,17 @@ An autoscaler node group is composed of multiple Kamatera servers with the same 
 All servers belonging to a node group are identified by Kamatera server tags `k8sca-CLUSTER_NAME`, `k8scang-NODEGROUP_NAME`.
 The cluster and node groups must be specified in the autoscaler cloud configuration file.
 
+## Deployment
+
+Copy [examples/deployment.yaml](examples/deployment.yaml) and modify the configuration as needed, see below
+regarding the required configuration values and format. When the configuraiont is ready, deploy it to your cluster
+e.g. using `kubectl apply -f deployment.yaml`.
+
 ## Configuration
 
 The cluster autoscaler only considers the cluster and node groups defined in the configuration file.
 
-You can see an example of the cloud config file at [examples/cluster-autoscaler-secret.yaml](examples/cluster-autoscaler-secret.yaml),
+You can see an example of the cloud config file at [examples/deployment.yaml](examples/deployment.yaml),
 
 **Important Note:** The cluster and node group names must be 15 characters or less.
 
@@ -150,43 +156,19 @@ make build &&\
 ./cluster-autoscaler-amd64 --cloud-config $CLOUD_CONFIG_FILE --cloud-provider kamatera --kubeconfig $KUBECONFIG -v2
 ```
 
-Open a new terminal and schedule some pods to trigger scale up (modify resources depending on node size):
-
-```
-echo '
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: test
-  labels:
-    app: test
-spec:
-  selector:
-    matchLabels:
-      app: test
-  replicas: 4
-  template:
-    metadata:
-      labels:
-        app: test
-    spec:
-      containers:
-      - name: test
-        image: alpine
-        command: [sleep, "86400"]
-        resources:
-          requests:
-            cpu: "500m"
-            memory: "100Mi"
-' | kubectl apply -f -
-```
-
-Check the pods, 
-
-Create the docker image:
+Build the docker image:
 
 ```
 make container
 ```
 
-tag the generated docker image and push it to a registry.
+Tag and push it to a Docker registry
+
+```
+docker tag staging-k8s.gcr.io/cluster-autoscaler-amd64:dev ghcr.io/github_username_lowercase/cluster-autoscaler-amd64
+docker push ghcr.io/github_username_lowercase/cluster-autoscaler-amd64
+```
+
+Make sure relevant clsuter has access to this registry/image.
+
+Follow the documentation for deploying the image and using the autoscaler.
