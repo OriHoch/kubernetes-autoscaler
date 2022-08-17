@@ -57,8 +57,8 @@ func (c *kamateraClientMock) SetBaseURL(baseURL string) {
 	c.Called(baseURL)
 }
 
-func (c *kamateraClientMock) ListServersByTag(ctx context.Context, tag string) ([]Server, error) {
-	args := c.Called(ctx, tag)
+func (c *kamateraClientMock) ListServers(ctx context.Context, instances map[string]*Instance) ([]Server, error) {
+	args := c.Called(ctx, instances)
 	return args.Get(0).([]Server), args.Error(1)
 }
 

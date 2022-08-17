@@ -27,6 +27,7 @@ import (
 const (
 	defaultMinSize int = 1
 	defaultMaxSize int = 254
+	defaultApiUrl  string = "https://cloudcli.cloudwm.com"
 )
 
 // nodeGroupConfig is the configuration for a specific node group.
@@ -53,6 +54,7 @@ type nodeGroupConfig struct {
 type kamateraConfig struct {
 	apiClientId     string
 	apiSecret       string
+	apiUrl          string
 	clusterName     string
 	defaultMinSize  int
 	defaultMaxSize  int
@@ -63,6 +65,7 @@ type kamateraConfig struct {
 type GcfgGlobalConfig struct {
 	KamateraApiClientId string `gcfg:"kamatera-api-client-id"`
 	KamateraApiSecret   string `gcfg:"kamatera-api-secret"`
+	KamateraApiUrl      string `gcfg:"kamatera-api-url"`
 	ClusterName 	    string `gcfg:"cluster-name"`
 	DefaultMinSize      string `gcfg:"default-min-size"`
 	DefaultMaxSize      string `gcfg:"default-max-size"`
@@ -129,6 +132,10 @@ func buildCloudConfig(config io.Reader) (*kamateraConfig, error) {
 	apiSecret := gcfgCloudConfig.Global.KamateraApiSecret
 	if len(apiSecret) == 0 {
 		return nil, fmt.Errorf("kamatera api secret is not set")
+	}
+	apiUrl := gcfgCloudConfig.Global.KamateraApiUrl
+	if len(apiUrl) == 0 {
+		apiUrl = defaultApiUrl
 	}
 
 	// Cluster name must be max 15 characters due to limitation of Kamatera server tags
@@ -238,6 +245,7 @@ func buildCloudConfig(config io.Reader) (*kamateraConfig, error) {
 		clusterName:     clusterName,
 		apiClientId:     apiClientId,
 		apiSecret:       apiSecret,
+		apiUrl:          apiUrl,
 		defaultMinSize:  defaultMinSize,
 		defaultMaxSize:  defaultMaxSize,
 		nodeGroupCfg:    nodeGroupCfg,

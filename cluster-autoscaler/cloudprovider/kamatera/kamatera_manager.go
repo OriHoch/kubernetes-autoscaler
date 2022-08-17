@@ -48,7 +48,7 @@ func newManager(config io.Reader, kubeClient kubernetes.Interface) (*manager, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config: %v", err)
 	}
-	client := buildKamateraAPIClient(cfg.apiClientId, cfg.apiSecret)
+	client := buildKamateraAPIClient(cfg.apiClientId, cfg.apiSecret, cfg.apiUrl)
 	m := &manager{
 		client:     client,
 		config:     cfg,

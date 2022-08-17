@@ -17,24 +17,31 @@ limitations under the License.
 package kamatera
 
 import (
+	"fmt"
 	apiv1 "k8s.io/api/core/v1"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
+	. "k8s.io/autoscaler/cluster-autoscaler/utils/test"
 )
 
 func TestCloudProvider_newKamateraCloudProvider(t *testing.T) {
 	// test ok on correctly creating a Kamatera provider
+	server := NewHttpServerMock(MockFieldContentType, MockFieldResponse)
+	defer server.Close()
 	rl := &cloudprovider.ResourceLimiter{}
-	cfg := strings.NewReader(`
+	cfg := strings.NewReader(fmt.Sprintf(`
 [global]
 kamatera-api-client-id=1a222bbb3ccc44d5555e6ff77g88hh9i
 kamatera-api-secret=9ii88h7g6f55555ee4444444dd33eee2
+kamatera-api-url=%s
 cluster-name=aaabbb
-`)
-	_, err := newKamateraCloudProvider(cfg, rl)
+`, server.URL))
+	server.On("handle", "/service/servers").Return(
+		"application/json", `[]`).Once()
+	_, err := newKamateraCloudProvider(cfg, rl, nil)
 	assert.NoError(t, err)
 
 	// test error on creating a Kamatera provider when config is bad
@@ -44,7 +51,7 @@ kamatera-api-client-id=
 kamatera-api-secret=
 cluster-name=
 `)
-	_, err = newKamateraCloudProvider(cfg, rl)
+	_, err = newKamateraCloudProvider(cfg, rl, nil)
 	assert.Error(t, err)
 	assert.Equal(t, "could not create kamatera manager: failed to parse config: cluster name is not set", err.Error())
 }
@@ -58,7 +65,7 @@ kamatera-api-client-id=1a222bbb3ccc44d5555e6ff77g88hh9i
 kamatera-api-secret=9ii88h7g6f55555ee4444444dd33eee2
 cluster-name=aaabbb
 `)
-	m, _ := newManager(cfg)
+	m, _ := newManager(cfg, nil)
 	m.nodeGroups = map[string]*NodeGroup{
 		"ng1": {id: "ng1"},
 		"ng2": {id: "ng2"},
@@ -77,7 +84,7 @@ kamatera-api-client-id=1a222bbb3ccc44d5555e6ff77g88hh9i
 kamatera-api-secret=9ii88h7g6f55555ee4444444dd33eee2
 cluster-name=aaabbb
 `)
-	m, _ := newManager(cfg)
+	m, _ := newManager(cfg, nil)
 	kamateraServerName1 := mockKamateraServerName()
 	kamateraServerName2 := mockKamateraServerName()
 	kamateraServerName3 := mockKamateraServerName()
@@ -131,16 +138,6 @@ cluster-name=aaabbb
 	ng, err = kcp.NodeGroupForNode(node)
 	assert.NoError(t, err)
 	assert.Nil(t, ng)
-
-	// test error on looking for a apiv1.Node with a bad providerID
-	node = &apiv1.Node{
-		Spec: apiv1.NodeSpec{
-			ProviderID: "",
-		},
-	}
-	ng, err = kcp.NodeGroupForNode(node)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Invalid node ProviderID")
 }
 
 
@@ -151,7 +148,7 @@ kamatera-api-client-id=1a222bbb3ccc44d5555e6ff77g88hh9i
 kamatera-api-secret=9ii88h7g6f55555ee4444444dd33eee2
 cluster-name=aaabbb
 `)
-	m, _ := newManager(cfg)
+	m, _ := newManager(cfg, nil)
 	resourceLimiter := &cloudprovider.ResourceLimiter{}
 	kcp := &kamateraCloudProvider{
 		manager:         m,

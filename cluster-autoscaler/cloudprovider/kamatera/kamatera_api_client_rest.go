@@ -31,12 +31,12 @@ const (
 )
 
 // NewKamateraApiClientRest factory to create new Rest API Client struct
-func NewKamateraApiClientRest(clientId string, secret string) (client KamateraApiClientRest) {
+func NewKamateraApiClientRest(clientId string, secret string, url string) (client KamateraApiClientRest) {
 	return KamateraApiClientRest{
 		userAgent: userAgent,
 		clientId:  clientId,
 		secret:    secret,
-		baseURL:   "https://cloudcli.cloudwm.com",
+		url:       url,
 	}
 }
 
@@ -76,17 +76,13 @@ type KamateraApiClientRest struct {
 	userAgent string
 	clientId  string
 	secret    string
-	baseURL   string
-}
-
-func (c *KamateraApiClientRest) SetBaseURL(baseURL string) {
-	c.baseURL = baseURL
+	url   string
 }
 
 func (c *KamateraApiClientRest) ListServers(ctx context.Context, instances map[string]*Instance) ([]Server, error) {
 	res, err := request(
 		ctx,
-		ProviderConfig{ApiUrl: c.baseURL, ApiClientID: c.clientId, ApiSecret: c.secret},
+		ProviderConfig{ApiUrl: c.url, ApiClientID: c.clientId, ApiSecret: c.secret},
 		"GET",
 		"/service/servers",
 		nil,
@@ -115,7 +111,7 @@ func (c *KamateraApiClientRest) ListServers(ctx context.Context, instances map[s
 func (c *KamateraApiClientRest) DeleteServer(ctx context.Context, name string) error {
 	res, err := request(
 		ctx,
-		ProviderConfig{ApiUrl: c.baseURL, ApiClientID: c.clientId, ApiSecret: c.secret},
+		ProviderConfig{ApiUrl: c.url, ApiClientID: c.clientId, ApiSecret: c.secret},
 		"POST",
 		"/service/server/poweroff",
 		KamateraServerPostRequest{ServerName: name},
@@ -124,7 +120,7 @@ func (c *KamateraApiClientRest) DeleteServer(ctx context.Context, name string) e
 		commandId := res.([]interface{})[0].(string)
 		_, err = waitCommand(
 			ctx,
-			ProviderConfig{ApiUrl: c.baseURL, ApiClientID: c.clientId, ApiSecret: c.secret},
+			ProviderConfig{ApiUrl: c.url, ApiClientID: c.clientId, ApiSecret: c.secret},
 			commandId,
 		)
 		if err != nil {
@@ -135,7 +131,7 @@ func (c *KamateraApiClientRest) DeleteServer(ctx context.Context, name string) e
 	}
 	_, err = request(
 		ctx,
-		ProviderConfig{ApiUrl: c.baseURL, ApiClientID: c.clientId, ApiSecret: c.secret},
+		ProviderConfig{ApiUrl: c.url, ApiClientID: c.clientId, ApiSecret: c.secret},
 		"POST",
 		"/service/server/terminate",
 		KamateraServerTerminatePostRequest{ServerName: name, Force: true},
@@ -168,7 +164,7 @@ func (c *KamateraApiClientRest) CreateServers(ctx context.Context, count int, co
 		serverName := kamateraServerName(config.NamePrefix)
 		res, err := request(
 			ctx,
-			ProviderConfig{ApiUrl: c.baseURL, ApiClientID: c.clientId, ApiSecret: c.secret},
+			ProviderConfig{ApiUrl: c.url, ApiClientID: c.clientId, ApiSecret: c.secret},
 			"POST",
 			"/service/server",
 			KamateraServerCreatePostRequest{
@@ -206,7 +202,7 @@ func (c *KamateraApiClientRest) CreateServers(ctx context.Context, count int, co
 	}
 	results, err := waitCommands(
 		ctx,
-		ProviderConfig{ApiUrl: c.baseURL, ApiClientID: c.clientId, ApiSecret: c.secret},
+		ProviderConfig{ApiUrl: c.url, ApiClientID: c.clientId, ApiSecret: c.secret},
 		serverNameCommandIds,
 	)
 	if err != nil {
@@ -226,7 +222,7 @@ func (c *KamateraApiClientRest) getServerTags(ctx context.Context, serverName st
 	if instances[serverName] == nil {
 		res, err := request(
 			ctx,
-			ProviderConfig{ApiUrl: c.baseURL, ApiClientID: c.clientId, ApiSecret: c.secret},
+			ProviderConfig{ApiUrl: c.url, ApiClientID: c.clientId, ApiSecret: c.secret},
 			"POST",
 			"/server/tags",
 			KamateraServerPostRequest{ServerName: serverName},

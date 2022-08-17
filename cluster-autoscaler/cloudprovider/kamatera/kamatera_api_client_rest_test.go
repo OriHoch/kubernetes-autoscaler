@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	. "k8s.io/autoscaler/cluster-autoscaler/utils/test"
 	"testing"
 )
@@ -30,61 +31,73 @@ const (
 	mockKamateraSecret = "mock-secret"
 )
 
-func TestApiClientRest_ListServersByTag_NoServers(t *testing.T) {
+func TestApiClientRest_ListServers_NoServers(t *testing.T) {
 	server := NewHttpServerMock(MockFieldContentType, MockFieldResponse)
 	defer server.Close()
 	ctx := context.Background()
-	client := NewKamateraApiClientRest(mockKamateraClientId, mockKamateraSecret)
-	client.SetBaseURL(server.URL)
+	client := NewKamateraApiClientRest(mockKamateraClientId, mockKamateraSecret, server.URL)
 	server.On("handle", "/service/servers").Return(
 		"application/json",
 		`[]`,
 	).Once()
-	servers, err := client.ListServersByTag(ctx, "test-tag")
+	servers, err := client.ListServers(ctx, map[string]*Instance{})
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(servers))
 	mock.AssertExpectationsForObjects(t, server)
 }
 
-func TestApiClientRest_ListServersByTag_NoMatchingServerTags(t *testing.T) {
+func TestApiClientRest_ListServers(t *testing.T) {
 	server := NewHttpServerMock(MockFieldContentType, MockFieldResponse)
 	defer server.Close()
 	ctx := context.Background()
-	client := NewKamateraApiClientRest(mockKamateraClientId, mockKamateraSecret)
-	client.SetBaseURL(server.URL)
-	serverName1 := mockKamateraServerName()
-	serverName2 := mockKamateraServerName()
+	client := NewKamateraApiClientRest(mockKamateraClientId, mockKamateraSecret, server.URL)
+	newServerName1 := mockKamateraServerName()
+	cachedServerName2 := mockKamateraServerName()
+	cachedServerName3 := mockKamateraServerName()
 	server.On("handle", "/service/servers").Return(
 		"application/json",
-		fmt.Sprintf(`[{"name": "%s"}, {"name": "%s"}]`, serverName1, serverName2),
+		fmt.Sprintf(`[
+	{"name": "%s", "power": "on"},
+	{"name": "%s", "power": "on"},
+	{"name": "%s", "power": "off"}
+]`, newServerName1, cachedServerName2, cachedServerName3),
 	).On("handle", "/server/tags").Return(
 		"application/json",
-		`[]`,
+		`[{"tag name": "test-tag"}, {"tag name": "other-test-tag"}]`,
 	)
-	servers, err := client.ListServersByTag(ctx, "test-tag")
+	servers, err := client.ListServers(ctx, map[string]*Instance{
+		cachedServerName2: {
+			Id:      cachedServerName2,
+			Status:  &cloudprovider.InstanceStatus{State: cloudprovider.InstanceRunning},
+			PowerOn: true,
+			Tags:    []string{"my-tag", "my-other-tag"},
+		},
+		cachedServerName3: {
+			Id:      cachedServerName3,
+			Status:  &cloudprovider.InstanceStatus{State: cloudprovider.InstanceRunning},
+			PowerOn: true,
+			Tags:    []string{"another-tag", "my-other-tag"},
+		},
+	})
 	assert.NoError(t, err)
-	assert.Equal(t, 0, len(servers))
-	mock.AssertExpectationsForObjects(t, server)
-}
-
-func TestApiClientRest_ListServersByTag_MatchingServerTags(t *testing.T) {
-	server := NewHttpServerMock(MockFieldContentType, MockFieldResponse)
-	defer server.Close()
-	ctx := context.Background()
-	client := NewKamateraApiClientRest(mockKamateraClientId, mockKamateraSecret)
-	client.SetBaseURL(server.URL)
-	serverName := mockKamateraServerName()
-	server.On("handle", "/service/servers").Return(
-		"application/json",
-		fmt.Sprintf(`[{"name": "%s"}]`, serverName),
-	).On("handle", "/server/tags").Return(
-		"application/json",
-		`[{"tag name": "test-tag"}]`,
-	)
-	servers, err := client.ListServersByTag(ctx, "test-tag")
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(servers))
-	assert.Equal(t, servers[0].Name, serverName)
+	assert.Equal(t, 3, len(servers))
+	assert.Equal(t, servers, []Server{
+		{
+			Name: newServerName1,
+			Tags: []string{"test-tag", "other-test-tag"},
+			PowerOn: true,
+		},
+		{
+			Name: cachedServerName2,
+			Tags: []string{"my-tag", "my-other-tag"},
+			PowerOn: true,
+		},
+		{
+			Name: cachedServerName3,
+			Tags: []string{"another-tag", "my-other-tag"},
+			PowerOn: false,
+		},
+	})
 	mock.AssertExpectationsForObjects(t, server)
 }
 
@@ -92,8 +105,7 @@ func TestApiClientRest_DeleteServer(t *testing.T) {
 	server := NewHttpServerMock(MockFieldContentType, MockFieldResponse)
 	defer server.Close()
 	ctx := context.Background()
-	client := NewKamateraApiClientRest(mockKamateraClientId, mockKamateraSecret)
-	client.SetBaseURL(server.URL)
+	client := NewKamateraApiClientRest(mockKamateraClientId, mockKamateraSecret, server.URL)
 	serverName := mockKamateraServerName()
 	commandId := "mock-command-id"
 	server.On("handle", "/service/server/poweroff").Return(
@@ -102,7 +114,7 @@ func TestApiClientRest_DeleteServer(t *testing.T) {
 	).Once().On("handle", "/service/queue").Return(
 		"application/json",
 		`[{"status": "complete"}]`,
-	).Once().On("handle", "/service/server/delete").Return(
+	).Once().On("handle", "/service/server/terminate").Return(
 		"application/json",
 		"{}",
 	).Once()
@@ -115,8 +127,7 @@ func TestApiClientRest_CreateServers(t *testing.T) {
 	server := NewHttpServerMock(MockFieldContentType, MockFieldResponse)
 	defer server.Close()
 	ctx := context.Background()
-	client := NewKamateraApiClientRest(mockKamateraClientId, mockKamateraSecret)
-	client.SetBaseURL(server.URL)
+	client := NewKamateraApiClientRest(mockKamateraClientId, mockKamateraSecret, server.URL)
 	commandId := "command"
 	server.On("handle", "/service/server").Return(
 		"application/json",

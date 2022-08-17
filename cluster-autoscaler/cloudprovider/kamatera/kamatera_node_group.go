@@ -267,21 +267,26 @@ func (n *NodeGroup) extendedDebug() string {
 func (n *NodeGroup) getResourceList() (apiv1.ResourceList, error) {
 	ramMb, err := strconv.Atoi(n.serverConfig.Ram)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse server config ram %s: %v", n.serverConfig.Ram, err)
 	}
 	// TODO: handle CPU types
+	if len(n.serverConfig.Cpu) < 2 {
+		return nil, fmt.Errorf("failed to parse server config cpu %s", n.serverConfig.Cpu)
+	}
 	cpuCores, err := strconv.Atoi(n.serverConfig.Cpu[0:len(n.serverConfig.Cpu)-1])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse server config cpu %s: %v", n.serverConfig.Cpu, err)
 	}
 	// TODO: handle additional disks
-	firstDiskSpec := n.serverConfig.Disks[0]
 	firstDiskSizeGb := 0
-	for _, attr := range strings.Split(firstDiskSpec, ",") {
-		if strings.HasPrefix(attr, "size=") {
-			firstDiskSizeGb, err = strconv.Atoi(strings.Split(attr, "=")[1])
-			if err != nil {
-				return nil, err
+	if len(n.serverConfig.Disks) > 0 {
+		firstDiskSpec := n.serverConfig.Disks[0]
+		for _, attr := range strings.Split(firstDiskSpec, ",") {
+			if strings.HasPrefix(attr, "size=") {
+				firstDiskSizeGb, err = strconv.Atoi(strings.Split(attr, "=")[1])
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}

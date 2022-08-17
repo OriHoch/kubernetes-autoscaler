@@ -22,14 +22,13 @@ import (
 
 // kamateraAPIClient is the interface used to call kamatera API
 type kamateraAPIClient interface {
-	SetBaseURL(baseURL string)
 	ListServers(ctx context.Context, instances map[string]*Instance) ([]Server, error)
 	DeleteServer(ctx context.Context, name string) error
 	CreateServers(ctx context.Context, count int, config ServerConfig) ([]Server, error)
 }
 
 // buildKamateraAPIClient returns the struct ready to perform calls to kamatera API
-func buildKamateraAPIClient(clientId string, secret string) kamateraAPIClient {
-	client := NewKamateraApiClientRest(clientId, secret)
+func buildKamateraAPIClient(clientId string, secret string, url string) kamateraAPIClient {
+	client := NewKamateraApiClientRest(clientId, secret, url)
 	return &client
 }

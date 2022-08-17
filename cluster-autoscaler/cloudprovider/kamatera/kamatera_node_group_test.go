@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,6 +32,7 @@ func TestNodeGroup_IncreaseSize(t *testing.T) {
 	ctx := context.Background()
 	mgr := manager{
 		client:     &client,
+		instances:  make(map[string]*Instance),
 	}
 	serverName1 := mockKamateraServerName()
 	serverName2 := mockKamateraServerName()
@@ -111,6 +113,7 @@ func TestNodeGroup_DeleteNodes(t *testing.T) {
 	ctx := context.Background()
 	mgr := manager{
 		client:     &client,
+		instances:  make(map[string]*Instance),
 	}
 	serverName1 := mockKamateraServerName()
 	serverName2 := mockKamateraServerName()
@@ -152,12 +155,6 @@ func TestNodeGroup_DeleteNodes(t *testing.T) {
 	assert.Equal(t, serverName4, ng.instances[serverName4].Id)
 	assert.Equal(t, serverName5, ng.instances[serverName5].Id)
 
-		// test error on deleting a node with invalid providerID
-	err = ng.DeleteNodes([]*apiv1.Node{{Spec: apiv1.NodeSpec{ProviderID: ""}}})
-	assert.Error(t, err)
-	assert.Equal(t, "Invalid node ProviderID: ", err.Error())
-
-
 	// test error on deleting a node we are not managing
 	err = ng.DeleteNodes([]*apiv1.Node{{Spec: apiv1.NodeSpec{ProviderID: mockKamateraServerName()}}})
 	assert.Error(t, err)
@@ -178,6 +175,7 @@ func TestNodeGroup_Nodes(t *testing.T) {
 	client := kamateraClientMock{}
 	mgr := manager{
 		client:     &client,
+		instances:  make(map[string]*Instance),
 	}
 	serverName1 := mockKamateraServerName()
 	serverName2 := mockKamateraServerName()
@@ -208,10 +206,62 @@ func TestNodeGroup_Nodes(t *testing.T) {
 	assert.Contains(t, serverIds, serverName3)
 }
 
+func TestNodeGroup_getResourceList(t *testing.T) {
+	ng := &NodeGroup{}
+	_, err := ng.getResourceList()
+	assert.ErrorContains(t, err, "failed to parse server config ram")
+	ng.serverConfig.Ram = "1024mb"
+	_, err = ng.getResourceList()
+	assert.ErrorContains(t, err, "failed to parse server config ram")
+	ng.serverConfig.Ram = "1024"
+	_, err = ng.getResourceList()
+	assert.ErrorContains(t, err, "failed to parse server config cpu")
+	ng.serverConfig.Cpu = "55PX"
+	_, err = ng.getResourceList()
+	assert.ErrorContains(t, err, "failed to parse server config cpu")
+	ng.serverConfig.Cpu = "55P"
+	rl, err := ng.getResourceList()
+	assert.NoError(t, err)
+	assert.Equal(t, apiv1.ResourceList{
+		apiv1.ResourcePods:    *resource.NewQuantity(110, resource.DecimalSI),
+		apiv1.ResourceCPU:     *resource.NewQuantity(int64(55), resource.DecimalSI),
+		apiv1.ResourceMemory:  *resource.NewQuantity(int64(1024*1024*1024*1024), resource.DecimalSI),
+		apiv1.ResourceStorage: *resource.NewQuantity(int64(0*1024*1024*1024), resource.DecimalSI),
+	}, rl)
+	ng.serverConfig.Disks = []string{"size=50"}
+	rl, err = ng.getResourceList()
+	assert.NoError(t, err)
+	assert.Equal(t, apiv1.ResourceList{
+		apiv1.ResourcePods:    *resource.NewQuantity(110, resource.DecimalSI),
+		apiv1.ResourceCPU:     *resource.NewQuantity(int64(55), resource.DecimalSI),
+		apiv1.ResourceMemory:  *resource.NewQuantity(int64(1024*1024*1024*1024), resource.DecimalSI),
+		apiv1.ResourceStorage: *resource.NewQuantity(int64(50*1024*1024*1024), resource.DecimalSI),
+	}, rl)
+}
+
+func TestNodeGroup_TemplateNodeInfo(t *testing.T) {
+	ng := &NodeGroup{
+		serverConfig: ServerConfig{
+			Ram: "1024",
+			Cpu: "5D",
+			Disks: []string{"size=50"},
+		},
+	}
+	nodeInfo, err := ng.TemplateNodeInfo()
+	assert.NoError(t, err)
+	assert.Equal(t, nodeInfo.Node().Status.Capacity, apiv1.ResourceList{
+		apiv1.ResourcePods:    *resource.NewQuantity(110, resource.DecimalSI),
+		apiv1.ResourceCPU:     *resource.NewQuantity(int64(5), resource.DecimalSI),
+		apiv1.ResourceMemory:  *resource.NewQuantity(int64(1024*1024*1024*1024), resource.DecimalSI),
+		apiv1.ResourceStorage: *resource.NewQuantity(int64(50*1024*1024*1024), resource.DecimalSI),
+	})
+}
+
 func TestNodeGroup_Others(t *testing.T) {
 	client := kamateraClientMock{}
 	mgr := manager{
 		client:     &client,
+		instances:  make(map[string]*Instance),
 	}
 	serverName1 := mockKamateraServerName()
 	serverName2 := mockKamateraServerName()
@@ -234,12 +284,12 @@ func TestNodeGroup_Others(t *testing.T) {
 	assert.Equal(t, 3, ts)
 	assert.Equal(t, "ng1", ng.Id())
 	assert.Equal(t, "node group ID: ng1 (min:1 max:7)", ng.Debug())
-	assert.Equal(t, "node group ID: ng1 (min:1 max:7)", ng.extendedDebug())
+	assert.Equal(t, fmt.Sprintf(`node group ID: ng1 (min:1 max:7)
+instance ID: %s state: Running powerOn: false
+instance ID: %s state: Running powerOn: false
+instance ID: %s state: Running powerOn: false`, serverName1, serverName2, serverName3), ng.extendedDebug())
 	assert.Equal(t, true, ng.Exist())
 	assert.Equal(t, false, ng.Autoprovisioned())
-	_, err = ng.TemplateNodeInfo()
-	assert.Error(t, err)
-	assert.Equal(t, "Not implemented", err.Error())
 	_, err = ng.Create()
 	assert.Error(t, err)
 	assert.Equal(t, "Not implemented", err.Error())
