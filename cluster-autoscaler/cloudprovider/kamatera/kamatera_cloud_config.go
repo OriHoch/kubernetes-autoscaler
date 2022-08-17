@@ -255,8 +255,8 @@ func getSizeLimits(minStr string, maxStr string, defaultMin int, defaultMax int)
 			return 0, 0, fmt.Errorf("could not parse min size for node group: %v", err)
 		}
 	}
-	if min < 1 {
-		return 0, 0, fmt.Errorf("min size for node group cannot be < 1")
+	if min < 0 {
+		return 0, 0, fmt.Errorf("min size for node group cannot be < 0")
 	}
 	max := defaultMax
 	if len(maxStr) != 0 {

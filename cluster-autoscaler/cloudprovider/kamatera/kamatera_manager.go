@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
+	"k8s.io/client-go/kubernetes"
 	"regexp"
 
 	klog "k8s.io/klog/v2"
@@ -39,9 +40,10 @@ type manager struct {
 	config     *kamateraConfig
 	nodeGroups map[string]*NodeGroup // key: NodeGroup.id
 	instances  map[string]*Instance  // key: Instance.id (which is also the Kamatera server name)
+	kubeClient kubernetes.Interface
 }
 
-func newManager(config io.Reader) (*manager, error) {
+func newManager(config io.Reader, kubeClient kubernetes.Interface) (*manager, error) {
 	cfg, err := buildCloudConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config: %v", err)
@@ -52,6 +54,7 @@ func newManager(config io.Reader) (*manager, error) {
 		config:     cfg,
 		nodeGroups: make(map[string]*NodeGroup),
 		instances:  make(map[string]*Instance),
+		kubeClient: kubeClient,
 	}
 	return m, nil
 }

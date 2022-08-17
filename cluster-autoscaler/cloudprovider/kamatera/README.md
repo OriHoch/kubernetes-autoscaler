@@ -101,10 +101,13 @@ network = "name=lan-12345-abcde,ip=auto"
 ### Server Initialization Script
 
 This script is required so that the server will connect to the relevant cluster. The specific script depends on
-how you create and manage the cluster. The script needs to be provided as a base64 encoded string.
+how you create and manage the cluster.
 
 See below for some common configurations, but the exact script may need to be modified depending on your requirements
 and server image.
+
+The script needs to be provided as a base64 encoded string. You can encode your script using the following command: 
+`cat script.sh | base64 -w0`.
 
 #### Kamatera Rancher Server Initialization Script
 
@@ -138,7 +141,7 @@ Setup a Kamatera cluster, you can use [this guide](https://github.com/Kamatera/r
 
 Get the cluster kubeconfig and set in local file and set in the `KUBECONFIG` environment variable.
 Make sure you are connected to the cluster using `kubectl get nodes`.
-Create a cloud config file and set it's path in `CLOUD_CONFIG_FILE` env var.
+Create a cloud config file according to the above documentation and set it's path in `CLOUD_CONFIG_FILE` env var.
 
 Build the binary and run it:
 

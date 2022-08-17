@@ -24,6 +24,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"strconv"
 	"strings"
@@ -204,6 +206,19 @@ func (n *NodeGroup) GetOptions(defaults config.NodeGroupAutoscalingOptions) (*co
 func (n *NodeGroup) findInstanceForNode(node *apiv1.Node) (*Instance, error) {
 	for _, instance := range n.instances {
 		if instance.Id == node.Spec.ProviderID {
+			klog.V(2).Infof("findInstanceForNode(%s): found based on node ProviderID", node.Name)
+			return instance, nil
+		} else if node.Spec.ProviderID == "" && instance.Id == node.Name {
+			klog.V(2).Infof("findInstanceForNode(%s): found based on node Id", node.Name)
+			// Rancher does not set providerID for nodes, so we use node name as providerID
+			// We also set the ProviderID as some autoscaler code expects it to be set
+			node.Spec.ProviderID = instance.Id
+			err := setNodeProviderID(n.manager.kubeClient, node.Name, instance.Id)
+			if err != nil {
+				// this is not a critical error, the autoscaler can continue functioning in this condition
+				// as the same node object is used in later code the ProviderID change will be picked up
+				klog.Warningf("failed to set node ProviderID for node name %s: %v", instance.Id, err)
+			}
 			return instance, nil
 		}
 	}
@@ -277,4 +292,20 @@ func (n *NodeGroup) getResourceList() (apiv1.ResourceList, error) {
 		apiv1.ResourceMemory:  *resource.NewQuantity(int64(ramMb*1024*1024*1024), resource.DecimalSI),
 		apiv1.ResourceStorage: *resource.NewQuantity(int64(firstDiskSizeGb*1024*1024*1024), resource.DecimalSI),
 	}, nil
+}
+
+func setNodeProviderID(kubeClient kubernetes.Interface, nodeName string, value string) error {
+	node, err := kubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get node to update provider ID %s %+v", nodeName, err)
+		return err
+	}
+	node.Spec.ProviderID = value
+	_, err = kubeClient.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("failed to update node's provider ID %s %+v", nodeName, err)
+		return err
+	}
+	klog.V(2).Infof("updated provider ID on node: %s", nodeName)
+	return nil
 }

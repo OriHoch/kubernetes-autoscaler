@@ -19,6 +19,9 @@ package kamatera
 import (
 	"fmt"
 	"io"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"os"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -127,15 +130,15 @@ func BuildKamatera(
 		klog.Fatalf("Could not open cloud provider configuration file %q, error: %v", opts.CloudConfig, err)
 	}
 	defer configFile.Close()
-	kcp, err := newKamateraCloudProvider(configFile, rl)
+	kcp, err := newKamateraCloudProvider(configFile, rl, createKubeClient(opts))
 	if err != nil {
 		klog.Fatalf("Could not create kamatera cloud provider: %v", err)
 	}
 	return kcp
 }
 
-func newKamateraCloudProvider(config io.Reader, rl *cloudprovider.ResourceLimiter) (cloudprovider.CloudProvider, error) {
-	m, err := newManager(config)
+func newKamateraCloudProvider(config io.Reader, rl *cloudprovider.ResourceLimiter, kubeClient kubernetes.Interface) (cloudprovider.CloudProvider, error) {
+	m, err := newManager(config, kubeClient)
 	if err != nil {
 		return nil, fmt.Errorf("could not create kamatera manager: %v", err)
 	}
@@ -158,4 +161,17 @@ func newKamateraCloudProvider(config io.Reader, rl *cloudprovider.ResourceLimite
 		manager:         m,
 		resourceLimiter: rl,
 	}, nil
+}
+
+func getKubeConfig(opts config.AutoscalingOptions) *rest.Config {
+	klog.V(1).Infof("Using kubeconfig file: %s", opts.KubeConfigPath)
+	kubeConfig, err := clientcmd.BuildConfigFromFlags("", opts.KubeConfigPath)
+	if err != nil {
+		klog.Fatalf("Failed to build kubeConfig: %v", err)
+	}
+	return kubeConfig
+}
+
+func createKubeClient(opts config.AutoscalingOptions) kubernetes.Interface {
+	return kubernetes.NewForConfigOrDie(getKubeConfig(opts))
 }
